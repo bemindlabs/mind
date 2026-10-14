@@ -30,8 +30,8 @@ async function agent(): Promise<string> {
   scratch.push(d);
   const files: Record<string, string> = {
     "memory/infra.md": "# Ports\n\ndashboard on 30600\n",
-    "memory/client.md": "# Client\n\nThe Jiancha invoice goes out monthly.\n\n# Other\n\nnothing\n",
-    "memory/imported/owner/jiancha.md": "# Billing\n\njiancha billing is manual\n",
+    "memory/client.md": "# Client\n\nThe Acmeco invoice goes out monthly.\n\n# Other\n\nnothing\n",
+    "memory/imported/owner/acmeco.md": "# Billing\n\nacmeco billing is manual\n",
   };
   for (const [rel, text] of Object.entries(files)) {
     await mkdir(dirname(join(d, rel)), { recursive: true });
@@ -84,12 +84,12 @@ describe("planning", () => {
   test("AC1: --match names whole files and lines, case-insensitively, and prints no text", async () => {
     const a = await agent();
     const plan = await planForget({
-      agentDir: a, subject: SUBJECT, target: { kind: "match", text: "JIANCHA" },
+      agentDir: a, subject: SUBJECT, target: { kind: "match", text: "ACMECO" },
       markerDir: markerDir(a), endpoints: NONE,
     });
     expect(plan.files.map((f) => `${f.path}:${f.lines.join(",")}`)).toEqual([
       "memory/client.md:3",
-      "memory/imported/owner/jiancha.md:3",
+      "memory/imported/owner/acmeco.md:3",
     ]);
     const printed = formatForgetPlan(plan).join("\n");
     expect(printed).not.toContain("invoice");
@@ -123,7 +123,7 @@ describe("planning", () => {
       throw new Error("refused");
     };
     const plan = await planForget({
-      agentDir: a, subject: SUBJECT, target: { kind: "match", text: "jiancha" },
+      agentDir: a, subject: SUBJECT, target: { kind: "match", text: "acmeco" },
       markerDir: markerDir(a), endpoints: ENDPOINTS, network: down,
     });
     expect(plan.refusals.join(" ")).toContain("would not be forgetting");
@@ -136,7 +136,7 @@ describe("planning", () => {
     await mkdir(markerDir(a), { recursive: true });
     await Bun.write(join(markerDir(a), "collection.json"), "{");
     const plan = await planForget({
-      agentDir: a, subject: SUBJECT, target: { kind: "match", text: "jiancha" }, markerDir: markerDir(a), endpoints: NONE,
+      agentDir: a, subject: SUBJECT, target: { kind: "match", text: "acmeco" }, markerDir: markerDir(a), endpoints: NONE,
     });
     expect(plan.refusals.join(" ")).toContain("cannot be read");
   });
@@ -148,14 +148,14 @@ describe("forgetting", () => {
     await writeRagMarker(markerDir(a), SUBJECT, ENDPOINTS.qdrantUrl, new Date());
     const s = store(9);
     const plan = await planForget({
-      agentDir: a, subject: SUBJECT, target: { kind: "match", text: "jiancha" },
+      agentDir: a, subject: SUBJECT, target: { kind: "match", text: "acmeco" },
       markerDir: markerDir(a), endpoints: ENDPOINTS, network: s.network,
     });
     expect(formatForgetPlan(plan).join("\n")).toContain("dropped whole");
 
     const result = await commitForget(plan, ENDPOINTS, s.network);
 
-    expect(result.removed).toEqual(["memory/client.md", "memory/imported/owner/jiancha.md"]);
+    expect(result.removed).toEqual(["memory/client.md", "memory/imported/owner/acmeco.md"]);
     expect(result.dropped).toBe(true);
     expect(result.check).toEqual({
       filesStillMatching: [],
@@ -164,7 +164,7 @@ describe("forgetting", () => {
       piecesAfter: 1,
       passed: true,
     });
-    expect(await searchFts(a, "jiancha", 10)).toEqual([]);
+    expect(await searchFts(a, "acmeco", 10)).toEqual([]);
     // AC5: the store was never asked to delete a point.
     expect(s.asked.filter((line) => line.includes("points/delete"))).toEqual([]);
     // Two drops — forget's own, then the rebuild's, which always starts from

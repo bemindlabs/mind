@@ -1628,7 +1628,7 @@ release แรกบน public ติดป้าย **`v0.3.0-alpha` · pre-rel
 - **นับ** `project|origin|day` ผ่าน `countPersonal` · เพิ่ม `CountTake "day"` (10 ตัวอักษรแรกของ ISO instant) ซึ่งยังหยาบกว่าเวลาเต็ม ตามหลักของ take เดิม · ไม่นับ `subagent` และ `unattended` (ตามแนวเดียวกับ D-057 AC1)
 - **คะแนน = ความถี่ × ความใหม่:** แต่ละ action ได้น้ำหนัก `0.5^(อายุเป็นวัน / half-life)` · ค่าเริ่มต้น 7 วัน ปรับด้วย `--half-life` (AC1) · นับย้อนหลังแค่ 6 เท่าของ half-life · รวมคะแนนขึ้นไปที่โปรเจกต์ระดับแรกใต้ root
 - **คำนวณใหม่ทุกครั้ง ไม่เก็บไว้** ⇒ ขยับตามข้อมูลใหม่เอง (AC3) และไม่มีที่ใหม่ให้ `erase` ต้องตามลบ
-- AC2 (5 อันดับแรก ≥ 3 อันดับที่เจ้าของยืนยัน) ⏳ รอเจ้าของตรวจ · ผลแรกกับข้อมูลจริง 2026-09-24: mind · bwoc · jianchatea · Solutions/server · ai-trading
+- AC2 (5 อันดับแรก ≥ 3 อันดับที่เจ้าของยืนยัน) ⏳ รอเจ้าของตรวจ · ผลแรกกับข้อมูลจริง 2026-09-24: mind · bwoc · another-project · Solutions/server · ai-trading
 
 ---
 
@@ -2847,7 +2847,7 @@ release แรกบน public ติดป้าย **`v0.3.0-alpha` · pre-rel
 - **ที่เจอใน `~/.secrets`:** Resend key ตัวเดียวอยู่ใน backup ของแอปอื่น (unity-sme-suite/omni-channel, ผู้ส่งยังเป็น `yourdomain.com`) · Stripe มีแต่ key โหมด test ของโปรเจกต์อื่น ⇒ ไม่ใช้ซ้ำ: ถอน key แล้วพังสองแอป แย่งโควตาและชื่อเสียงผู้ส่งกัน
 - **ตั้ง:** ผู้ส่ง `Mind <no-reply@market.bemind.tech>` (subdomain แยกชื่อเสียงจากอีเมลบริษัท) · DNS ของ Resend + DMARC `p=none` เฉพาะ `market.bemind.tech` (ไม่แตะ `bemind.tech`) · ปิด click tracking (ไม่งั้น `#token` ของทุกลิงก์ผ่าน host redirect ของ Resend) · key อยู่ที่ `~/.secrets/.env.mind-platform-resend` (600) · เอา `EMAIL_OUTBOX_DIR` ออกจาก unit เมื่อสลับ driver
 - **Stripe:** ยังไม่ต้องใช้จนถึง S16.2
-- **แก้ (2026-10-05 — เจ้าของสั่ง *"หา key ที่เคยมีในเครื่อง ใน omni channels มี"*):** key ใน backup ของ unity-sme omni-channel ถูกเพิกถอนแล้ว · key ของ jianchatea omni ใช้ได้ (full access, บัญชีนี้ verify `bemind.tech` ไว้แล้ว) ⇒ ใช้ key นั้น**แค่สร้าง**สิ่งที่ mind ต้องใช้: โดเมน `market.bemind.tech` (ap-northeast-1, DNS DKIM/SPF/MX + DMARC `p=none` ใน Cloudflare, verified, ปิด click/open tracking) และ **key ใหม่ sending-only ผูกโดเมนนี้** เก็บที่ `~/.secrets/.env.mind-platform-resend` (600) · key ของ jianchatea ไม่เข้าไปใน market · platform เปลี่ยนเป็น `EMAIL_DRIVER=resend` แล้ว (2026-10-05)
+- **แก้ (2026-10-05 — เจ้าของสั่ง *"หา key ที่เคยมีในเครื่อง ใน omni channels มี"*):** key ใน backup ของ unity-sme omni-channel ถูกเพิกถอนแล้ว · key ของ another-project omni ใช้ได้ (full access, บัญชีนี้ verify `bemind.tech` ไว้แล้ว) ⇒ ใช้ key นั้น**แค่สร้าง**สิ่งที่ mind ต้องใช้: โดเมน `market.bemind.tech` (ap-northeast-1, DNS DKIM/SPF/MX + DMARC `p=none` ใน Cloudflare, verified, ปิด click/open tracking) และ **key ใหม่ sending-only ผูกโดเมนนี้** เก็บที่ `~/.secrets/.env.mind-platform-resend` (600) · key ของ another-project ไม่เข้าไปใน market · platform เปลี่ยนเป็น `EMAIL_DRIVER=resend` แล้ว (2026-10-05)
 
 ## D-149 — agent ต้องลงมือทำได้ (actions) · สั่งงานได้ · ใช้คอมพิวเตอร์ได้ (computer use) — ตาม backend และ model ที่ใช้อยู่ เท่าที่ตัวนั้นรองรับ
 
