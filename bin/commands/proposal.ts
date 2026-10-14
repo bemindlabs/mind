@@ -488,7 +488,12 @@ async function cmdDecide(argv: readonly string[]): Promise<number> {
         `since".`,
     );
   }
-  sayRefusals(ERR, read.inventory);
+  // The list as it stands now: the inventory above was read before this decision, so printing it would leave out
+  // the refusal just made and say "Nothing has been refused" about it (B6 of the first stranger run).
+  sayRefusals(ERR, {
+    ...read.inventory,
+    proposals: read.inventory.proposals.map((entry) => (entry === stored ? { ...entry, proposal: decided } : entry)),
+  });
   return 0;
 }
 

@@ -318,3 +318,43 @@ describe("the help text", () => {
     expect(result.stdout).not.toContain("[S1.5]");
   }, 30_000);
 });
+
+describe("MIND_QDRANT_URL (B7 of the stranger run)", () => {
+  /** A vector store that lists one collection, so "which address did doctor ask" is readable from its own report. */
+  function stubQdrant() {
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => Response.json({ result: { collections: [{ name: "somebody-elses" }] } }) });
+    stubs.push(server);
+    return `http://127.0.0.1:${server.port}`;
+  }
+  const stubs: { stop: (force: boolean) => void }[] = [];
+  afterEach(() => {
+    for (const server of stubs.splice(0)) server.stop(true);
+  });
+
+  /** `doctor` with no `--qdrant`, so the address is the environment's or the default. */
+  function noFlag(home: string): string[] {
+    return ["doctor", "--home", home, "--ollama", DEAD_OLLAMA, "--no-version", "--json"];
+  }
+  const storeLine = (stdout: string): string => {
+    const report = JSON.parse(stdout) as { sections: { title: string; findings: { id: string; detail: string }[] }[] };
+    return report.sections.find((section) => section.title === "vector store")!.findings.map((finding) => `${finding.id} ${finding.detail}`).join("\n");
+  };
+
+  test("with no --qdrant, the variable is the address asked, as memory index and erase use it", async () => {
+    const home = await makeHome();
+    const live = stubQdrant();
+    const run1 = await run(home, noFlag(home), { MIND_QDRANT_URL: `${live}/` });
+    expect(storeLine(run1.stdout)).toContain(`qdrant.reachable ${live} · 1 collection(s)`);
+
+    // And a dead address in the variable is reported as dead, not as the default store's answer.
+    const run2 = await run(home, noFlag(home), { MIND_QDRANT_URL: DEAD_QDRANT });
+    expect(storeLine(run2.stdout)).toContain(`qdrant.unreachable ${DEAD_QDRANT} did not answer`);
+  }, 60_000);
+
+  test("--qdrant wins over the variable", async () => {
+    const home = await makeHome();
+    const live = stubQdrant();
+    const out = await run(home, [...noFlag(home), "--qdrant", live], { MIND_QDRANT_URL: DEAD_QDRANT });
+    expect(storeLine(out.stdout)).toContain(`qdrant.reachable ${live}`);
+  }, 60_000);
+});

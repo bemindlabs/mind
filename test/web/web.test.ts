@@ -271,6 +271,23 @@ describe("routes run the CLI and nothing else", () => {
     expect((await h(req("/nope"))).status).toBe(404);
   });
 
+  test("a refusal answers with the line that says it was refused, not with the list of earlier refusals (B6)", async () => {
+    const deps: WebDeps = {
+      ...fakeDeps().deps,
+      run: async () => ({
+        code: 0,
+        stdout: "abcd1234-1 refused by the owner at 2026-10-14T10:00:00.000Z\n",
+        stderr: "\n1 thing(s) this subject has been refused, newest first:\n  abcd1234-1  tidy\n  Printed in full on every run.\n",
+      }),
+    };
+    const refused = await (await handler(deps, "tok", HOSTS)(req("/api/proposals/abcd1234-1/refuse", { method: "POST" }))).json();
+    expect(refused).toEqual({ ok: true, message: "abcd1234-1 refused by the owner at 2026-10-14T10:00:00.000Z" });
+    // Approving keeps the guidance the command prints on stderr ("Good for one turn …").
+    const approving: WebDeps = { ...deps, run: async () => ({ code: 0, stdout: "x approved by the owner at t\n", stderr: "  Good for one turn, and for this action only.\n" }) };
+    const approved = await (await handler(approving, "tok", HOSTS)(req("/api/proposals/abcd1234-1/approve", { method: "POST" }))).json();
+    expect(approved).toEqual({ ok: true, message: "Good for one turn, and for this action only." });
+  });
+
   test("a turn that printed no JSON comes back as a sentence, not a crash", async () => {
     const deps: WebDeps = {
       ...fakeDeps().deps,

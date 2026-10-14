@@ -65,7 +65,7 @@ function repeatedOption(argv: readonly string[], key: string): string[] {
 
 const ERASE_USAGE =
   "usage: mind erase <subject> (--agent <dir> | --no-agent) --by <text> [--personal] " +
-  "[--needle <text>]... [--remote <target.json>] [--out <file>] [--json] [--yes]";
+  "[--needle <text>]... [--remote <target.json>] [--vectors-not-reached <collection>] [--out <file>] [--json] [--yes]";
 
 /**
  * The plan, in the order somebody reading it would want the bad news.
@@ -98,6 +98,12 @@ function printErasePlan(plan: ErasePlan, out: Sink): void {
   out.line(
     `  ledger    ${String(plan.ledger.matched.length).padStart(5)} line(s)             ${plan.ledger.dir}`,
   );
+  if (plan.yours.length > 0) {
+    out.line(
+      `  yours     ${String(plan.yours.length).padStart(5)} file(s)             memory/imported/ — your own notes: ` +
+        `NOT removed by erase, yours to delete (D-187)`,
+    );
+  }
   for (const probe of plan.reserved) {
     out.line(
       `  ${probe.place.padEnd(9)} ${"not built".padEnd(14)} ` +
@@ -294,6 +300,7 @@ export async function cmdErase(argv: readonly string[], deps: EraseDeps = {}): P
     instructionFiles,
     soulName,
     personalValues,
+    ...(options.get("vectors-not-reached") ? { acknowledgeUnreached: options.get("vectors-not-reached")! } : {}),
   });
 
   // Under `--json`, stdout is the document and nothing else, so `| jq` reads

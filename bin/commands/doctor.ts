@@ -19,6 +19,7 @@ import { capLine as capText, capSurvey } from "../../src/exec/cap.ts";
 import { decideDial, dialEnv } from "../dial.ts";
 import { LITELLM_BASE_URL, LOCAL_BACKENDS, liteLLMKeyFile, readLiteLLMKey } from "../../src/exec/local-cli.ts";
 import { networkInterfaces } from "node:os";
+import { readEnv } from "../../src/env.ts";
 import { judgeStatus } from "../../src/egress/index.ts";
 import { isKnownBackend } from "../../src/soul/index.ts";
 import { subjectId } from "../../src/types.ts";
@@ -26,7 +27,8 @@ import { ENGINE_CHECKOUT, parseArgs, usageError } from "../shared.ts";
 
 const DOCTOR_USAGE =
   "usage: mind doctor [--model a,b] [--backend a,b] [--home <dir>] " +
-  "[--agent <dir> --subject <id>] [--ollama <url>] [--qdrant <url>] [--no-version] [--json]";
+  "[--agent <dir> --subject <id>] [--ollama <url>] [--qdrant <url>] [--no-version] [--json]\n" +
+  "  --qdrant defaults to $MIND_QDRANT_URL, then http://127.0.0.1:10300";
 
 /**
  * `mind doctor` — S0.2, kept to parsing and printing.
@@ -107,7 +109,9 @@ export async function cmdDoctor(argv: readonly string[]): Promise<number> {
       options.get("ollama"),
       configured === undefined || configured === "" ? DEFAULT_OLLAMA_HOST : configured,
     ),
-    qdrantHost: host(options.get("qdrant"), DEFAULT_QDRANT_HOST),
+    // The flag, else `MIND_QDRANT_URL` as `memory index`, `memory search` and `erase` read it, else the default
+    // (B7 of the first stranger run: doctor ignored the variable and listed a store the other commands never asked).
+    qdrantHost: host(options.get("qdrant"), readEnv("QDRANT_URL", process.env) || DEFAULT_QDRANT_HOST),
     models: commas(options.get("model")),
     backends,
     probeVersions: !options.has("no-version"),

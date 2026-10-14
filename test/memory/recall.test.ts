@@ -14,7 +14,7 @@ import { dirname, join } from "node:path";
 import { MEMORY_README } from "../../src/agent/template.ts";
 import { collectionFor } from "../../src/memory/collection.ts";
 import { buildFts, ftsPath, searchFts } from "../../src/memory/fts.ts";
-import { readRagMarker } from "../../src/memory/marker.ts";
+import { readRagMarker, writeRagMarker } from "../../src/memory/marker.ts";
 import { indexAgent, recall, RRF_K } from "../../src/memory/recall.ts";
 import { CHUNK_MAX, chunkId, chunkMarkdown, readMemory } from "../../src/memory/sources.ts";
 import type { Fetch } from "../../src/memory/store-admin.ts";
@@ -303,7 +303,19 @@ describe("index and recall", () => {
     expect(result.hits[0]?.via).toEqual(["fts"]);
   });
 
-  test("a store that fails mid-index leaves the marker behind, which is the point of writing it first", async () => {
+  test("a store nobody can reach leaves no marker: nothing was written, so there is nothing to look for (B1)", async () => {
+    const agent = await agentWith(FILES);
+    const down: Fetch = async () => {
+      throw new Error("Unable to connect. Is the computer able to access the url?");
+    };
+    const report = await indexAgent(agent, SUBJECT, ENDPOINTS, { markerDir: join(agent, "m"), now: () => new Date(), network: down });
+    expect(report.vectors).toEqual({ ok: false, reason: "Unable to connect. Is the computer able to access the url?" });
+    expect(await readRagMarker(join(agent, "m"))).toBeNull();
+    // The full-text half is still built (I-1).
+    expect(report.fts).toBe(2);
+  });
+
+  test("a store that answers 500 to the first question was not reached: no marker", async () => {
     const agent = await agentWith(FILES);
     const report = await indexAgent(agent, SUBJECT, ENDPOINTS, {
       markerDir: join(agent, "m"),
@@ -311,7 +323,46 @@ describe("index and recall", () => {
       network: network({ storeStatus: 500 }).doFetch,
     });
     expect(report.vectors.ok).toBe(false);
+    expect(await readRagMarker(join(agent, "m"))).toBeNull();
+  });
+
+  test("a store that was reached and then fails mid-index leaves the marker behind, which is the point of writing it before the collection", async () => {
+    const agent = await agentWith(FILES);
+    // Reached (the question about the collection is answered), the collection is made, the embed endpoint never answers.
+    const net = network({ embedFailures: 100 });
+    const report = await indexAgent(agent, SUBJECT, ENDPOINTS, {
+      markerDir: join(agent, "m"),
+      now: () => new Date(),
+      network: net.doFetch,
+    });
+    expect(report.vectors.ok).toBe(false);
+    expect(net.calls.some((call) => call.method === "PUT")).toBe(true);
     expect(await readRagMarker(join(agent, "m"))).not.toBeNull();
+  });
+
+  test("reached, but the collection could not be made and is not there: the marker this run wrote is taken back", async () => {
+    const agent = await agentWith(FILES);
+    const refusing: Fetch = async (_url, init) => {
+      const method = init?.method ?? "GET";
+      if (method === "PUT") return new Response("", { status: 500 });
+      if (method === "GET") return new Response("", { status: 404 });
+      return Response.json({ result: true });
+    };
+    const markerDir = join(agent, "m");
+    const report = await indexAgent(agent, SUBJECT, ENDPOINTS, { markerDir, now: () => new Date(), network: refusing });
+    expect(report.vectors.ok).toBe(false);
+    expect(await readRagMarker(markerDir)).toBeNull();
+  });
+
+  test("an earlier marker is never taken back by a later failed run", async () => {
+    const agent = await agentWith(FILES);
+    const markerDir = join(agent, "m");
+    await writeRagMarker(markerDir, SUBJECT, ENDPOINTS.qdrantUrl, new Date("2026-01-01T00:00:00Z"));
+    const down: Fetch = async () => {
+      throw new Error("refused");
+    };
+    await indexAgent(agent, SUBJECT, ENDPOINTS, { markerDir, now: () => new Date(), network: down });
+    expect(await readRagMarker(markerDir)).not.toBeNull();
   });
 
   test("a search that fails is reported, and no index at all says absent", async () => {

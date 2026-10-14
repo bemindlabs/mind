@@ -29,6 +29,7 @@ import { chmod, mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/pro
 import { hostname, tmpdir, uptime } from "node:os";
 import { join } from "node:path";
 import { templateFiles } from "../../src/agent/template.ts";
+import { certificate, formatCertificate } from "../../src/erase/certificate.ts";
 import { commitErase, planErase, verifyErase, type EraseEnv } from "../../src/erase/plan.ts";
 import { BROWSER_SCHEMA, containerName, createRecord } from "../../src/browser/store.ts";
 import { recordPath, wiringDir } from "../../src/browser/paths.ts";
@@ -1060,6 +1061,52 @@ describe("the vector collection", () => {
     expect(plan.refusals.join(" ")).toContain(COLLECTION);
   }, 30_000);
 
+  test("the refusal says what to do: wait for the store, or type the collection's name to go on without it (B1)", async () => {
+    const home = await sandbox();
+    await withMarker(home, "http://127.0.0.1:9");
+    const plan = await planErase(envFor(home), request(null, []));
+    const said = plan.refusals.join(" ");
+    expect(said).toContain("--vectors-not-reached " + COLLECTION);
+    expect(said).toContain("not reached: vector collection " + COLLECTION);
+  }, 30_000);
+
+  test("a wrong name typed for the acknowledgement does not open the refusal", async () => {
+    const home = await sandbox();
+    await withMarker(home, "http://127.0.0.1:9");
+    const plan = await planErase(envFor(home), request(null, [], { acknowledgeUnreached: "mind__other" }));
+    expect(plan.refusals.join(" ")).toContain("does not match");
+    expect(plan.refusals.join(" ")).toContain(COLLECTION);
+    expect(plan.vector.unreached).toBe(false);
+  }, 30_000);
+
+  test("the collection's name typed: the run goes on, lists the collection as not reached, and is never erased-and-verified", async () => {
+    const home = await sandbox();
+    const mine = await fixture(home, SUBJECT);
+    await withMarker(home, "http://127.0.0.1:9");
+    const plan = await planErase(envFor(home), request(mine.agent, [mine.instruction], { acknowledgeUnreached: COLLECTION }));
+    expect(plan.refusals).toEqual([]);
+    expect(plan.vector.unreached).toBe(true);
+    const dry = certificate({ plan, result: null, verification: null, observedAccount: "t", engine: "x", issuedAt: "2026-09-21T10:00:00.000Z" });
+    expect(dry.verification.notReached).toEqual([`vector collection ${COLLECTION}`]);
+
+    const result = await commitErase(plan);
+    const verification = await verifyErase(plan, result);
+    expect(verification.notReached).toEqual([`vector collection ${COLLECTION}`]);
+    expect(verification.verdict).toBe("erased-with-remainder");
+    const issued = certificate({ plan, result, verification, observedAccount: "t", engine: "x", issuedAt: "2026-09-21T10:00:00.000Z" });
+    expect(issued.statement.join(" ")).toContain(`not reached: vector collection ${COLLECTION}`);
+    expect(formatCertificate(issued).join("\n")).toContain(`not reached   vector collection ${COLLECTION}`);
+    // The marker went with the rest, so the certificate is the only record that a collection may still be there.
+    expect(await Bun.file(join(ragDirFor(home, envFor(home).env, SUBJECT), RAG_MARKER_FILE)).exists()).toBe(false);
+  }, 30_000);
+
+  test("the acknowledgement changes nothing when the store answers or there is no marker", async () => {
+    const home = await sandbox();
+    const plan = await planErase(envFor(home), request(null, [], { acknowledgeUnreached: COLLECTION }));
+    expect(plan.refusals).toEqual([]);
+    expect(plan.vector.unreached).toBe(false);
+  }, 30_000);
+
   test("no marker and no store: a note, not a refusal — the bare container's case", async () => {
     const home = await sandbox();
     const plan = await planErase(envFor(home), request(null, []));
@@ -1117,3 +1164,52 @@ describe("D-042's confirmations are this subject's data", () => {
   }, 30_000);
 });
 
+describe("the owner's own notes in memory/imported/ (B5 of the stranger run, D-187)", () => {
+  const NOTE = ["memory", "imported", "notes", "vat.md"] as const;
+
+  test("they are listed in the plan, and the dry run's certificate lists them under yoursToDelete", async () => {
+    const home = await sandbox();
+    const mine = await fixture(home, SUBJECT);
+    await Bun.write(join(mine.agent, ...NOTE), "# Tax\n\nVAT is due on the 15th.\n");
+    const plan = await planErase(envFor(home), request(mine.agent, [mine.instruction]));
+    expect(plan.yours.map((path) => path.slice(mine.agent.length + 1))).toEqual([NOTE.join("/")]);
+    const dry = certificate({ plan, result: null, verification: null, observedAccount: "t", engine: "x", issuedAt: "2026-09-21T10:00:00.000Z" });
+    expect(dry.verification.yoursToDelete).toEqual([join(mine.agent, ...NOTE)]);
+  }, 30_000);
+
+  test("they stay, they are named, and the verdict is not erased-and-verified while they are there", async () => {
+    const home = await sandbox();
+    const mine = await fixture(home, SUBJECT);
+    await Bun.write(join(mine.agent, ...NOTE), "# Tax\n\nVAT is due on the 15th.\n");
+    const plan = await planErase(envFor(home), request(mine.agent, [mine.instruction]));
+    const result = await commitErase(plan);
+    const verification = await verifyErase(plan, result);
+    expect(await Bun.file(join(mine.agent, ...NOTE)).exists()).toBe(true);
+    expect(verification.yoursToDelete).toEqual([join(mine.agent, ...NOTE)]);
+    expect(verification.verdict).toBe("erased-with-remainder");
+    const issued = certificate({ plan, result, verification, observedAccount: "t", engine: "x", issuedAt: "2026-09-21T10:00:00.000Z" });
+    const said = issued.statement.join(" ");
+    expect(said).toContain("Yours to delete");
+    expect(said).toContain("memory/imported/");
+    expect(said).toContain("not removed by erase");
+    expect(formatCertificate(issued).join("\n")).toContain(`yours to delete  ${join(mine.agent, ...NOTE)}`);
+  }, 30_000);
+
+  test("once the owner has deleted them, a run over what is left is clean", async () => {
+    const home = await sandbox();
+    const mine = await fixture(home, SUBJECT);
+    await Bun.write(join(mine.agent, ...NOTE), "# Tax\n");
+    const plan = await planErase(envFor(home), request(mine.agent, [mine.instruction]));
+    const result = await commitErase(plan);
+    await rm(join(mine.agent, "memory", "imported"), { recursive: true });
+    const verification = await verifyErase(plan, result);
+    expect(verification.yoursToDelete).toEqual([]);
+    expect(verification.verdict).toBe("erased-and-verified");
+  }, 30_000);
+
+  test("no agent directory, nothing to list", async () => {
+    const home = await sandbox();
+    const plan = await planErase(envFor(home), request(null, []));
+    expect(plan.yours).toEqual([]);
+  }, 30_000);
+});

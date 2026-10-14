@@ -177,7 +177,10 @@ describe("mind erase", () => {
     // counted*.
     // `@5` since S15.8: a scope may be of kind `kept` — what `--personal` keeps on purpose outside git, the
     // agent's signing key — and `verification.keptHits` counts it. A third kind a reader has no arm for.
-    expect(cert.schema).toBe("mind/erase-certificate@5");
+    // `@6` since the first stranger run: `verification.notReached` lists what the owner told the run to go on
+    // without, and such a document is never `erased-and-verified`.
+    expect(cert.schema).toBe("mind/erase-certificate@6");
+    expect(cert.verification.notReached).toEqual([]);
     expect(cert.verification.keptHits).toBe(0);
     expect(cert.verdict).toBe("erased-and-verified");
     expect(cert.by.claimed).toBe("a reviewer");
@@ -194,6 +197,62 @@ describe("mind erase", () => {
     // What was never this subject's to delete is still there, and git is intact.
     expect(await Bun.file(join(agent, "memory", "README.md")).exists()).toBe(true);
     expect(await Bun.file(join(agent, ".git", "HEAD")).exists()).toBe(true);
+  }, 60_000);
+
+  test("memory index with no vector store leaves no marker, and erase then goes through (B1 of the stranger run)", async () => {
+    const { home, agent } = await makeAgent();
+    await Bun.write(join(agent, "memory", "a.md"), "# A\n\nhello\n");
+    const indexed = await run(home, ["memory", "index", agent, "--subject", SUBJECT]);
+    expect(indexed.code, indexed.stderr).toBe(0);
+    expect(indexed.stdout).toContain("not built — Unable to connect");
+    expect(await Bun.file(join(home, "state", "mind", "rag", SUBJECT, "collection.json")).exists()).toBe(false);
+
+    const dry = await run(home, ["erase", SUBJECT, "--agent", agent, "--by", "a reviewer"]);
+    expect(dry.code, dry.stderr).toBe(0);
+    const erased = await run(home, ["erase", SUBJECT, "--agent", agent, "--by", "a reviewer", "--yes", "--json"]);
+    expect(erased.stderr).not.toContain("cannot reach it now");
+    expect(JSON.parse(erased.stdout).verification.notReached).toEqual([]);
+  }, 60_000);
+
+  test("a marker and a dead store: refuses with the way forward; the typed collection name goes on and says not reached (B1)", async () => {
+    const { home, agent } = await makeAgent();
+    const dir = join(home, "state", "mind", "rag", SUBJECT);
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, "collection.json"),
+      JSON.stringify({ schema: "mind/rag-marker/1", subject: SUBJECT, collection: `mind__${SUBJECT}`, qdrantUrl: "http://127.0.0.1:9", at: "2026-10-14T00:00:00Z" }),
+    );
+
+    const refused = await run(home, ["erase", SUBJECT, "--agent", agent, "--by", "a reviewer", "--yes"]);
+    expect(refused.code).toBe(1);
+    expect(refused.stderr).toContain(`--vectors-not-reached mind__${SUBJECT}`);
+    expect(await Bun.file(join(agent, "soul", "role.md")).exists()).toBe(true);
+
+    const typed = await run(home, ["erase", SUBJECT, "--agent", agent, "--by", "a reviewer", "--yes", "--json", "--vectors-not-reached", `mind__${SUBJECT}`]);
+    expect(typed.code, typed.stderr).toBe(1);
+    const cert = JSON.parse(typed.stdout);
+    expect(cert.verdict).toBe("erased-with-remainder");
+    expect(cert.verification.notReached).toEqual([`vector collection mind__${SUBJECT}`]);
+    expect(await Bun.file(join(agent, "soul", "role.md")).exists()).toBe(false);
+  }, 60_000);
+
+  test("notes copied in by memory ingest are named, not removed, and the verdict does not claim them (B5, D-187)", async () => {
+    const { home, agent } = await makeAgent();
+    await Bun.write(join(agent, "memory", "imported", "notes", "vat.md"), "# Tax\n\nVAT is due on the 15th.\n");
+
+    const dry = await run(home, ["erase", SUBJECT, "--agent", agent, "--by", "a reviewer"]);
+    expect(dry.code, dry.stderr).toBe(0);
+    expect(dry.stdout).toContain("memory/imported/ — your own notes: NOT removed by erase, yours to delete");
+
+    const erased = await run(home, ["erase", SUBJECT, "--agent", agent, "--by", "a reviewer", "--yes", "--json"]);
+    expect(erased.code, erased.stderr).toBe(1);
+    const cert = JSON.parse(erased.stdout);
+    expect(cert.verdict).toBe("erased-with-remainder");
+    expect(cert.verification.yoursToDelete).toEqual([join(agent, "memory", "imported", "notes", "vat.md")]);
+    expect(await Bun.file(join(agent, "memory", "imported", "notes", "vat.md")).exists()).toBe(true);
+    // Everything the data map names is gone all the same.
+    expect(await Bun.file(join(agent, "soul", "role.md")).exists()).toBe(false);
+    expect(await grepTree(join(home, "state"), SUBJECT)).toEqual([]);
   }, 60_000);
 
   test("a turn killed while it held the ledger's lock does not stop an erase (D-145)", async () => {

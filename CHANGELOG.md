@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+(nothing yet)
+
+## 0.11.1 — 2026-10-14
+
+### Changed — the quickstart and README describe the fixed build (B1 to B7)
+- **`docs/quickstart.md` and README no longer warn about the bugs fixed above** (the `Ctrl-D` after `setup`, the first-listed model, the empty web schedule, `erase` refusing after `memory index` with no Qdrant), and say what `erase` does now: no refusal without a marker, `--vectors-not-reached`, and the imported notes listed as `yours to delete`. The page says that the published `v0.11.0-alpha` still behaves the old way in those places, and that the new text was checked by tests rather than by a second full run.
+
+### Fixed — `mind doctor` ignored `MIND_QDRANT_URL` (B7 of the stranger run)
+- **`mind doctor` asks the vector store at `--qdrant`, else `MIND_QDRANT_URL`, else `http://127.0.0.1:10300`.** `memory index`, `memory search` and `erase` already used the variable; doctor used only its flag and the default, so with the variable set to a dead port it listed the default store's collections (`ok store`) while `index` said "Unable to connect". The `--qdrant` flag still wins.
+
+### Fixed — two messages that misled (B6 of the stranger run)
+- **The `route:` line no longer says "the turn goes to cloud" for the usual chain.** That chain is `claude, codex, then ollama`, so on a machine with no vendor CLI the answer comes from ollama and the web chat's `notes` said cloud for a local answer. The automatic reasons now name the chain (`so the usual chain (claude, codex, then ollama) takes the turn`); explicit `--route cloud` still says cloud, because that was asked for.
+- **`mind proposal decide --refuse` no longer ends with "Nothing has been refused for this subject yet."** The list it printed was read before the decision was written, so it left the refusal just made out. It is the list as it stands after the decision. The web's `POST /api/proposals/<id>/refuse` now answers with the line that says it was refused (`<id> refused by … at …`) instead of the tail of that list.
+
+### Fixed — `mind erase` said `erased-and-verified` while the ingested notes were still in `memory/imported/` (B5 of the stranger run, D-187)
+- **Erase lists the owner's own notes under `memory/imported/` as `yours to delete`, does not remove them, and does not claim them.** They are files of the owner's repository and carry no subject id, so they were neither deleted nor searched, and the verdict still read `erased-and-verified`. Now the dry run, the certificate's statement, a line of its own and `verification.yoursToDelete` (schema `@6`) name each by path, and while any remains the verdict is `erased-with-remainder` (exit 1), after everything on the data map has gone. D-187 records why they are listed rather than removed; `docs/erase.md` has a section on it.
+
+### Fixed — the web page's schedule was empty for triggers in `soul/` (B4 of the stranger run)
+- **`mind web` reads `triggers.md` from the agent's `soul/`** (where the docs, `mind triggers` and `mind triggers schedule` put it), not only from the directory it was started on. Started on the repository root, as the quickstart does, the page showed `"triggers": []` although `mind triggers show` listed the trigger. The page may be started on either the root or `soul/` itself; the fire times it reads are the ones `mind triggers tick` writes for `soul/`. Tested through the binary with a real agent directory and `/api/state`.
+
+### Fixed — `mind setup` offered the first pulled model, not the one in `MIND_OLLAMA_MODEL` (B3 of the stranger run)
+- **At "Which model?", Enter now takes `MIND_OLLAMA_MODEL` when it is set and that model is pulled** (a name with no tag matches its `:latest`); otherwise the first model Ollama lists, as before. A line above the question says which model is the default and why (`default model: gemma3:4b — MIND_OLLAMA_MODEL is set and that model is pulled`, or that the variable names a model that is not pulled and was not used). Before, "take the defaults" started a turn on whichever model was listed first, here a 27B on a machine with 4 GB of GPU free.
+
+### Fixed — `mind setup` did not return its prompt at a terminal (B2 of the stranger run)
+- **`mind setup` now ends by itself after `Done.`** It held one reader on stdin for the whole run, so at a terminal (where no end-of-file follows the last answer) the process stayed alive and swallowed the next typed lines until Ctrl-D. It now reads through the shared line reader, which lets go of stdin after every line (`lineReaderOrEnd` in `bin/shared.ts`; the end of input is still told apart from an empty answer, so "ran out of input" is unchanged). Tested with a stdin pipe that is written and never closed, which is what a terminal looks like to the process.
+
+### Fixed — `mind erase` could not run on a machine with no vector store (B1 of the stranger run, D-187)
+- **`mind memory index` no longer writes the vector-store marker before it has reached the store.** With no Qdrant, `index` left a marker for a collection that never existed and `mind erase` then refused for ever, in the dry run and with `--yes`. Now the store is asked first; a store that does not answer gets no marker, and a marker this run wrote is taken back when the collection could not be made and is not there. A marker an earlier run wrote stays.
+- **When a marker exists and the store is down, `erase` still refuses, but says what to do:** wait, or pass `--vectors-not-reached <collection>` with the exact name the refusal prints. The run then erases everything else, the certificate says `not reached: vector collection <name>` (statement, `verification.notReached`, and a line of its own), and the verdict is `erased-with-remainder`, never `erased-and-verified`. The certificate schema is now `mind/erase-certificate@6`.
+
 ### Changed — the quickstart followed as a stranger (GL-04b); install URLs name the real tag
 - **`docs/quickstart.md` and README → Install were followed step by step by an automated reviewer on Linux x86-64 with the published `v0.11.0-alpha` and a local model** (`notes/2026-10-14_quickstart-stranger-run.md`: 50 steps, 35 pass, 7 page fixes, 6 engine bugs listed with reproductions, none fixed here). Page fixes: every install URL and the dry-run sample name `v0.11.0-alpha` (a `v0.11.0` URL answers 404); cosign is in the requirements; the claim of a second copy of each binary under an older name is removed (the release has none); `setup`'s model default, the `Ctrl-D` problem, the two-row ledger, the web console's default port and `--backend ollama`, what `mind erase` refuses and leaves, the Thai half's real coverage, and the time claim are stated as measured. The provenance box says an automated reviewer did this and that no person has yet.
 

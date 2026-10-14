@@ -156,3 +156,12 @@ what refuses and what it leaves; three rows added to the troubleshooting table; 
 `README.md`: install section uses `v0.11.0-alpha` in every command, the dry-run sample is the recorded one, the "second
 copy under the older name" claim is removed (the release has none), the error sample names the real tag, the Thai-half and
 erase rows say what they cover, and `mind setup` mentions the Ctrl-D problem.
+
+## What happened to the bugs afterwards
+
+B1 to B7 were fixed on branch `fix/quickstart-bugs`, one commit each, with a failing test first (CHANGELOG, Unreleased; D-187 for B1 and B5).
+The page text above in "Bugs found" is what was seen on `v0.11.0-alpha` and is kept as the record; `docs/quickstart.md`
+and `README.md` describe the fixed build. B1 is decided as: no marker until the store answered; refuse with the way
+forward when a marker exists; `--vectors-not-reached <collection>` goes on and says `not reached`. B5 is decided as: the
+owner's imported notes are listed as `yours to delete`, not removed, and the verdict is `erased-with-remainder` while
+they remain.

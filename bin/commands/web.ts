@@ -27,6 +27,7 @@ import { basisDirFor, readBasis, recordState } from "../../src/consent/basis.ts"
 import { listMemories, memoryGraph, readMemoryFile, whoMentions } from "../../src/web/memories.ts";
 import { keyPrint, loadOrCreateKey, replaceKey } from "../../src/web/key.ts";
 import { encodeQr, qrTerminal } from "../../src/web/qr.ts";
+import { SOUL_DIR } from "../../src/agent/index.ts";
 import { linkLines } from "../../src/web/banner.ts";
 import { isatty } from "node:tty";
 import { addSubscription, forgetAll, forgetEverything, notifyAll, pushDirFor, removeSubscription, subscriptionsFor, WaitingWatch, type Fetcher } from "../../src/web/push.ts";
@@ -79,12 +80,17 @@ async function gather(dir: string, id: SubjectId, options: ReadonlyMap<string, s
     }
   }
 
+  // `triggers.md` lives in the agent's `soul/`, and `mind triggers` is given that directory, which is also what its
+  // fire times are keyed by. The page may be started on the repository root or on `soul/` itself; both show the
+  // same schedule (B4 of the first stranger run: it only looked in the root and showed nothing).
   const triggers: { id: string; every: string; next: string }[] = [];
-  const file = Bun.file(join(dir, TRIGGERS_FILE));
+  const inSoul = join(dir, SOUL_DIR);
+  const triggersAt = (await Bun.file(join(inSoul, TRIGGERS_FILE)).exists()) ? inSoul : dir;
+  const file = Bun.file(join(triggersAt, TRIGGERS_FILE));
   if (await file.exists()) {
     const parsed = parseTriggers(TRIGGERS_FILE, await file.text());
     if (parsed.ok) {
-      const fired = await readFired(firedPath(dir, triggersDirFor(dialEnv(), id)));
+      const fired = await readFired(firedPath(triggersAt, triggersDirFor(dialEnv(), id)));
       for (const t of parsed.value) {
         const due = nextDue(t, fired, now);
         triggers.push({ id: t.id, every: t.every, next: due <= now ? "now" : ago(due.toISOString(), now) });

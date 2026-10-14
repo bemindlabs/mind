@@ -1,6 +1,6 @@
 {
   "name": "mind",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Mind — a CLI and web console that builds AGI agents you own: a soul of its own, memory recalled from your notes and documents, autonomy with a kill switch, A2A and Telegram, one git repo per agent, local-first.",
   "type": "module",
   "license": "Apache-2.0",

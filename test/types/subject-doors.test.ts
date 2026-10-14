@@ -130,7 +130,10 @@ const MODULES: Readonly<Record<string, { doors: readonly string[]; downstream: R
   },
   "src/memory/marker.ts": {
     doors: ["ragDirFor", "writeRagMarker"],
-    downstream: { readRagMarker: "reads a directory ragDirFor resolved" },
+    downstream: {
+      readRagMarker: "reads a directory ragDirFor resolved",
+      removeRagMarker: "takes back the marker in a directory ragDirFor resolved",
+    },
   },
   "src/memory/collection.ts": {
     doors: ["collectionFor", "collidesWith"],

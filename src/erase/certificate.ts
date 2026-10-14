@@ -48,6 +48,7 @@
 import { sep } from "node:path";
 import { PLACE_IDS, placeOf, placeTally, type Place, type PlaceId } from "./places.ts";
 import {
+  notReachedBy,
   whatWasFound,
   whatWasRemoved,
   type EraseFound,
@@ -99,8 +100,15 @@ import type { ScopeKind } from "./search.ts";
  * `--personal` keeps on purpose outside git, the agent's signing key — and
  * `verification.keptHits` counts its hits. A reader that switched on `deletable`
  * and `git` meets a third kind it has no arm for.
+ *
+ * `@6` is the first stranger run's (B1, B5): `verification.notReached` lists what the owner told the run to go on
+ * without (a vector collection whose store did not answer), and a document with an entry there is never
+ * `erased-and-verified`. A reader that took `erased-and-verified` to mean "every place Mind knows was reached"
+ * would be wrong about a `@6` document, and that is the reason for the tag. `verification.yoursToDelete` is the other
+ * half of that: the owner's own imported notes, listed and never removed, which also keep the verdict from
+ * `erased-and-verified` (D-187).
  */
-export const CERTIFICATE_SCHEMA = "mind/erase-certificate@5";
+export const CERTIFICATE_SCHEMA = "mind/erase-certificate@6";
 
 /**
  * Why the certificate does or does not carry a commit count.
@@ -232,6 +240,14 @@ export interface EraseCertificate {
     /** Hits in what `--personal` keeps on purpose — the signing key's path names the subject (D-138). */
     readonly keptHits: number;
     readonly personalHits: number | null;
+    /** `vector collection <name>` for each place the owner told the run to go on without. Never empty on an erased-and-verified. */
+    readonly notReached: readonly string[];
+    /**
+     * The owner's own notes copied into `memory/imported/` by `mind memory ingest`, by path, as they stood after the
+     * run. Erase does not remove them (they are files of the owner's repository, not on the data map); while any is
+     * there the verdict is not `erased-and-verified`.
+     */
+    readonly yoursToDelete: readonly string[];
     /**
      * `path:line` for every hit, with the needle's label and never its text — and then every file still there under
      * a tree that was to be emptied, by path, with the tree's name, so a transcript that survived is named and not
@@ -316,6 +332,25 @@ export function statementFor(
       `Something was found and something went: ${found.total} thing(s) were there before, and ` +
         `the search afterwards found the identifier nowhere it must not be. What that search ` +
         `does not cover is listed below, and this document certifies nothing about it.`,
+    );
+  }
+
+  for (const what of verification?.notReached ?? notReachedBy(plan)) {
+    lines.push(
+      `not reached: ${what}. Mind wrote to it, the store did not answer, and the run went on at the owner's ` +
+        `word. It may still hold this subject's text, and this document certifies nothing about it.`,
+    );
+  }
+
+  const yours = verification?.yoursToDelete ?? plan.yours;
+  if (yours.length > 0) {
+    lines.push(
+      `Yours to delete: ${yours.length} file(s) in memory/imported/ of ${plan.agentDir ?? "the agent directory"}, notes ` +
+        `\`mind memory ingest\` copied from your own files. They are not removed by erase and not searched for this ` +
+        `subject: they belong to your repository, not to the subject's data map, and nothing in them says whose they ` +
+        `are. This document certifies nothing about them; delete them ` +
+        `yourself (\`git rm -r\` for what git tracks; \`ingest\` copies them back while the source still has them). ` +
+        `Everything else under memory/ is yours in the same way.`,
     );
   }
 
@@ -493,6 +528,8 @@ export function certificate(input: CertificateInput): EraseCertificate {
       gitHits: verification?.search.gitHits ?? 0,
       keptHits: verification?.search.keptHits ?? 0,
       personalHits: verification?.personal?.gitHits ?? null,
+      notReached: verification?.notReached ?? notReachedBy(plan),
+      yoursToDelete: verification?.yoursToDelete ?? plan.yours,
       where: verification === null ? [] : hitLines(verification),
       searched: SEARCHED,
       notSearched: NOT_SEARCHED,
@@ -647,7 +684,8 @@ function placeRow(id: PlaceId, plan: ErasePlan, result: EraseResult | null): Cer
       probe.url === null
         ? `collection ${probe.collection}: no store was asked, and Mind holds no record of writing one.`
         : probe.state?.kind === "unreachable"
-          ? `collection ${probe.collection} at ${probe.url}: the store did not answer (${probe.state.reason}).`
+          ? `collection ${probe.collection} at ${probe.url}: the store did not answer (${probe.state.reason}).` +
+            (probe.unreached ? ` NOT REACHED, and not dropped: not reached: vector collection ${probe.collection}.` : "")
           : present === null
             ? `collection ${probe.collection} at ${probe.url}: not there when this ran.`
             : `collection ${probe.collection} at ${probe.url}: ${present} point(s) · ` +
@@ -786,6 +824,12 @@ export function formatCertificate(cert: EraseCertificate): readonly string[] {
           : ` · ${cert.verification.personalHits} personal value(s) still in kept files`),
     );
     for (const where of cert.verification.where) lines.push(`             ${where}`);
+  }
+  for (const path of cert.verification.yoursToDelete) {
+    lines.push(`yours to delete  ${path} — not removed by erase; it is in your repository`);
+  }
+  for (const what of cert.verification.notReached) {
+    lines.push(`not reached   ${what} — the store did not answer; it may still hold this subject's text`);
   }
 
   lines.push("");

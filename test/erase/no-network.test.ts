@@ -163,6 +163,7 @@ const EXPORTED: readonly string[] = [
   "manifestTargets",
   "nameMatches",
   "notBuiltPlaces",
+  "notReachedBy",
   "personFile",
   "placeOf",
   "placeTally",

@@ -634,7 +634,9 @@ export function handler(deps: WebDeps, token: string, hosts: readonly string[], 
       const note = typeof body["note"] === "string" ? body["note"].trim().slice(0, 500) : "";
       if (action !== "triage" && note !== "") args.push("--note", note);
       const out = await deps.run(args);
-      return json({ ok: out.code === 0, message: said(out.stderr) || said(out.stdout) });
+      // A refusal is answered with the line that says it was refused (stdout); stderr then holds the list of every
+      // refusal so far, which is not what the person just did. An approval keeps the guidance stderr carries.
+      return json({ ok: out.code === 0, message: action === "refuse" ? said(out.stdout) || said(out.stderr) : said(out.stderr) || said(out.stdout) });
     }
 
     // Settings. Each is the command a person would type; the page adds nothing.

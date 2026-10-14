@@ -24,6 +24,9 @@ export interface Route {
   readonly reason: string;
 }
 
+/** What the cloud route is made of: it ends in ollama, so it is not "cloud" on a machine that has no vendor CLI. */
+const USUAL_CHAIN = "the usual chain (claude, codex, then ollama)";
+
 export const ROUTE_PREFERENCES: readonly RoutePreference[] = ["auto", "local", "cloud"];
 
 export function parseRoutePreference(raw: string | undefined): RoutePreference | undefined {
@@ -44,7 +47,7 @@ export function chooseRoute(input: RouteInput): Route {
     }
     return {
       prefer: "cloud",
-      reason: "You asked for local, but no local backend can take this turn, so it goes to cloud instead.",
+      reason: `You asked for local, but no fenced local CLI can take this turn, so ${USUAL_CHAIN} is used.`,
     };
   }
 
@@ -65,7 +68,7 @@ export function chooseRoute(input: RouteInput): Route {
   return {
     prefer: "cloud",
     reason: acting
-      ? "Nothing is held back and no local backend is needed, so the turn goes to cloud."
-      : "Nothing is held back and the turn does not act, so the turn goes to cloud.",
+      ? `Nothing is held back and no local CLI is needed, so ${USUAL_CHAIN} takes the turn.`
+      : `Nothing is held back and the turn does not act, so ${USUAL_CHAIN} takes the turn.`,
   };
 }

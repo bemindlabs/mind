@@ -9,7 +9,7 @@
  */
 
 /** The engine's version. Kept equal to `package.json`, checked by a test. */
-export const VERSION = "0.11.0";
+export const VERSION = "0.11.1";
 
 /** What a derived artefact records as the thing that produced it. */
 export const GENERATOR = `mind@${VERSION}`;

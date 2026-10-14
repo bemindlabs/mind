@@ -151,3 +151,34 @@ export function nextSteps(dir: string, subject: string): readonly string[] {
     `mind --as ${dir} turn --prompt "…"  # talk to it`,
   ];
 }
+
+/** The model a first turn offers, and the reason in one line (B3 of the first stranger run). */
+export interface ModelChoice {
+  /** `""` when there is none to offer. */
+  readonly model: string;
+  readonly why: string;
+}
+
+/**
+ * Pick the model `setup` offers on Enter.
+ *
+ * `MIND_OLLAMA_MODEL` first, when it is set and that model is pulled (a name with no tag matches its `:latest`);
+ * otherwise the first model the daemon lists. It used to be the first one always, so a person who had set the
+ * variable to the small model they meant to use was offered a 27B that was listed before it. The reason is returned
+ * with the answer so the person is shown which one was chosen and why, and can type another.
+ */
+export function chooseModel(pulled: readonly string[], fromEnv: string | undefined): ModelChoice {
+  const wanted = fromEnv?.trim() ?? "";
+  if (pulled.length === 0) {
+    return { model: "", why: "no model is pulled, so none is offered; pull one (`ollama pull <name>`) or type a name" };
+  }
+  if (wanted !== "") {
+    const match = pulled.find((name) => name === wanted) ?? pulled.find((name) => name === `${wanted}:latest`);
+    if (match !== undefined) return { model: match, why: "MIND_OLLAMA_MODEL is set and that model is pulled" };
+    return {
+      model: pulled[0]!,
+      why: `the first of ${pulled.length} pulled models; MIND_OLLAMA_MODEL=${wanted} is not pulled, so it was not used`,
+    };
+  }
+  return { model: pulled[0]!, why: `the first of ${pulled.length} pulled models; MIND_OLLAMA_MODEL is not set` };
+}

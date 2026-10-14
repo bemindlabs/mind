@@ -52,6 +52,20 @@ describe("chooseRoute", () => {
   });
 });
 
+describe("route reasons do not claim where the turn goes (B6 of the stranger run)", () => {
+  // The automatic route says "cloud" for the usual chain, and that chain ends in ollama, which is local: on a machine
+  // with no vendor CLI the turn is answered there, and a line saying "goes to cloud" is then false.
+  const usual = (route: ReturnType<typeof chooseRoute>) => {
+    expect(route.reason).not.toContain("goes to cloud");
+    expect(route.reason).not.toContain("to cloud instead");
+    expect(route.reason).toContain("the usual chain (claude, codex, then ollama)");
+  };
+
+  test("nothing held and not acting", () => usual(chooseRoute(input())));
+  test("nothing held and acting", () => usual(chooseRoute(input({ acting: true, localAvailable: true }))));
+  test("local asked for and not available", () => usual(chooseRoute(input({ preference: "local", localAvailable: false }))));
+});
+
 describe("route reasons", () => {
   const cases: RouteInput[] = [
     input({ preference: "cloud" }),

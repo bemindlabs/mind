@@ -402,6 +402,24 @@ describe("lineReader, in process", () => {
   });
 });
 
+describe("lineReaderOrEnd, in process (B2)", () => {
+  test("an empty line is an empty answer, the end of input is undefined, a CR is dropped, and the lock is free between lines", async () => {
+    const chunks = ["a\r\n\nlast"];
+    let stream: ReadableStream<Uint8Array> | undefined;
+    const open = () =>
+      (stream = new ReadableStream<Uint8Array>({ pull(c) { const next = chunks.shift(); if (next === undefined) c.close(); else c.enqueue(new TextEncoder().encode(next)); } }));
+    const { lineReaderOrEnd } = await import("../../bin/shared.ts");
+    const read = lineReaderOrEnd(open);
+    expect(await read()).toBe("a");
+    // Released after each line: this is what lets a terminal's process end by itself.
+    expect(stream!.locked).toBe(false);
+    expect(await read()).toBe("");
+    expect(await read()).toBe("last");
+    expect(await read()).toBeUndefined();
+    expect(await read()).toBeUndefined();
+  });
+});
+
 describe("typedPhrase (D-077)", () => {
   test("paste codes, a carriage return, copied quotes and extra spaces are not the phrase; the words are", async () => {
     const { typedPhrase } = await import("../../bin/shared.ts");

@@ -1,7 +1,7 @@
 # What `mind erase` removes
 
 ```sh
-mind erase <subject> (--agent <dir> | --no-agent) --by <text> [--personal] [--needle <text>]... [--yes]
+mind erase <subject> (--agent <dir> | --no-agent) --by <text> [--personal] [--needle <text>]... [--vectors-not-reached <collection>] [--yes]
 ```
 
 Without `--yes` it is a dry run: it prints every place it would remove, how much is in each, what it will search
@@ -15,7 +15,25 @@ subject again and issues a certificate whose verdict is one of four words:
 | `erased-and-verified` | something was found, it went, and the subject id (and every `--needle`) is findable nowhere it must not be |
 | `erased-with-remainder` | it went, and something is still there: a file that could not be deleted, a hit in a place Mind does not delete for you, a place nobody could read. The certificate names each one |
 
-The verdict is never `erased-and-verified` while a file is left in a place that was to be emptied.
+The verdict is never `erased-and-verified` while a file is left in a place that was to be emptied, while the certificate
+lists a place as `not reached`, or while it lists notes as `yours to delete` (next section).
+
+## Your own notes: `memory/imported/`
+
+`mind memory ingest` copies your notes into `memory/imported/<name>/` in the agent's repository, where recall reads them.
+**`erase` does not remove them.** They are files of your git repository, copied from files that are yours, and nothing in them
+says which subject they belong to, so they are not on the data map and the search for the subject id does not look for
+them. A run that left them in place and still said `erased-and-verified` would be claiming a place it never examined, so
+instead:
+
+- the dry run and the certificate **list every one of them by path** as `yours to delete`
+  (`verification.yoursToDelete` in the JSON), and say that this document certifies nothing about them;
+- while one is still there the verdict is `erased-with-remainder` (exit 1), after everything the data map names has gone.
+
+Delete them yourself (`git rm -r memory/imported/<name>` for what git tracks), and keep in mind that `memory ingest` copies
+them back for as long as the source folder still holds them. Run `erase` again to get a verdict without the remainder (it then
+reads `nothing-found` unless something else is left; the first run's certificate is the evidence of the erasure). The rest
+of `memory/` is yours in the same way and is not listed.
 
 ## The places
 
@@ -30,7 +48,7 @@ names, so the two cannot disagree about where a subject's data is.
 | the personal directory | under the data root, one directory per subject: raw capture, proposals, tasks | whole |
 | the agent's signing key | under the data root, beside the personal directory | whole; `--personal` keeps it |
 | the turn ledger | under the state root | line by line, then the directory |
-| the vector collection | Qdrant, by name | dropped whole, or not at all |
+| the vector collection | Qdrant, by name | dropped whole, or not at all. `memory index` leaves the marker that says Mind wrote there only once the store has answered, so a machine with no Qdrant has none and `erase` goes on. With a marker and a store that does not answer, `erase` refuses; `--vectors-not-reached <collection>` (the exact name the refusal prints) goes on without it, and the certificate then lists `not reached: vector collection <name>` and is `erased-with-remainder`, never verified (D-187) |
 | Mind's block in each vendor instruction file | `CLAUDE.md` and the like | the block only; a block edited by hand refuses the run |
 | the local backends' homes | `<state root>/vendors/claude-local`, `<state root>/vendors/grok-local` | whole, when the subject is tied to the home (next section) |
 

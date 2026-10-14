@@ -230,6 +230,18 @@ export function report(issues: readonly SoulIssue[]): number {
  * that asks once still exits with the terminal open.
  */
 export function lineReader(open: () => ReadableStream<Uint8Array>): () => Promise<string> {
+  const next = lineReaderOrEnd(open);
+  return async () => (await next()) ?? "";
+}
+
+/**
+ * The same reader, but the end of input is `undefined` and an empty line is `""`: `mind setup` has to tell "the
+ * person pressed Enter" from "there is nothing more to read", and answers the first with its default and the second
+ * with an error. It releases the stream's lock after every line, as {@link lineReader} does, and that is what lets
+ * the process end by itself at a terminal: a reader held for the whole run keeps stdin open, and `setup` then only
+ * returned on Ctrl-D (B2 of the first stranger run).
+ */
+export function lineReaderOrEnd(open: () => ReadableStream<Uint8Array>): () => Promise<string | undefined> {
   let stream: ReadableStream<Uint8Array> | undefined;
   let pending = "";
   const decoder = new TextDecoder();
@@ -241,13 +253,13 @@ export function lineReader(open: () => ReadableStream<Uint8Array>): () => Promis
         if (newline !== -1) {
           const line = pending.slice(0, newline);
           pending = pending.slice(newline + 1);
-          return line;
+          return line.replace(/\r$/, "");
         }
         const { done, value } = await reader.read();
         if (done || value === undefined) {
           const rest = pending;
           pending = "";
-          return rest;
+          return rest === "" ? undefined : rest;
         }
         pending += decoder.decode(value, { stream: true });
       }

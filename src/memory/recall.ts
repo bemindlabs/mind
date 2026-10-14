@@ -15,10 +15,10 @@
 import { inScope, type Scope } from "./kinds.ts";
 import type { SubjectId } from "../types.ts";
 import { buildFts, ftsPath, searchFts } from "./fts.ts";
-import { writeRagMarker } from "./marker.ts";
+import { readRagMarker, removeRagMarker, writeRagMarker } from "./marker.ts";
 import { readMemory } from "./sources.ts";
 import type { VectorEndpoints } from "./endpoints.ts";
-import type { Fetch } from "./store-admin.ts";
+import { collectionState, type Fetch } from "./store-admin.ts";
 import { replaceCollection, searchVectors } from "./vector.ts";
 
 /** The constant from the RRF paper; large enough that rank 1 does not dominate. */
@@ -37,7 +37,9 @@ export interface IndexReport {
 /**
  * Read `memory/`, build the full-text file, then try the vector collection.
  *
- * The marker is written before the collection is touched — see `marker.ts`.
+ * The marker is written before the collection is made, and only once the store has answered: a store nobody could
+ * reach was never written to, and a marker for it would stop `erase` over nothing (B1, `marker.ts`). A marker this
+ * run wrote is taken back when the collection could not be made and is not there.
  */
 export async function indexAgent(
   agentDir: string,
@@ -52,11 +54,20 @@ export async function indexAgent(
   if ("reason" in endpoints) {
     vectors = { ok: false, reason: endpoints.reason };
   } else {
-    try {
-      await writeRagMarker(options.markerDir, subject, endpoints.qdrantUrl, options.now());
-      vectors = { ok: true, points: await replaceCollection(endpoints, subject, sources.chunks, doFetch) };
-    } catch (cause) {
-      vectors = { ok: false, reason: cause instanceof Error ? cause.message : String(cause) };
+    const reached = await collectionState(endpoints.qdrantUrl, subject, doFetch);
+    if (reached.kind === "unreachable") {
+      vectors = { ok: false, reason: reached.reason.replace(/^\w*Error: /, "") };
+    } else {
+      const hadMarker = (await readRagMarker(options.markerDir)) !== null;
+      try {
+        await writeRagMarker(options.markerDir, subject, endpoints.qdrantUrl, options.now());
+        vectors = { ok: true, points: await replaceCollection(endpoints, subject, sources.chunks, doFetch) };
+      } catch (cause) {
+        vectors = { ok: false, reason: cause instanceof Error ? cause.message : String(cause) };
+        if (!hadMarker && (await collectionState(endpoints.qdrantUrl, subject, doFetch)).kind === "absent") {
+          await removeRagMarker(options.markerDir);
+        }
+      }
     }
   }
   return {

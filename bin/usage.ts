@@ -303,7 +303,8 @@ Usage:
                                         by which rule — never the text.
   mind erase <subject> (--agent <dir> | --no-agent) --by <text>
                [--personal] [--needle <text>]... [--remote <target.json>]
-               [--out <file>] [--json] [--yes]
+               [--vectors-not-reached <collection>] [--out <file>] [--json]
+               [--yes]
                                         Remove one subject from every place
                                         Mind has a deleter for, count what is
                                         left from disk, search for the
@@ -311,7 +312,12 @@ Usage:
                                         certificate. Writes nothing without
                                         --yes. Exit 1 when anything is left, or
                                         when a place has data Mind cannot
-                                        delete. Exit 3 for \`nothing-found\`:
+                                        delete. If vectors were written and the
+                                        store is down, it refuses; typing the
+                                        collection's name as --vectors-not-reached
+                                        goes on without it and the certificate
+                                        says "not reached", never verified.
+                                        Exit 3 for \`nothing-found\`:
                                         nothing of this subject was here, so
                                         nothing was erased and the document is
                                         not a certificate of erasure. Mind

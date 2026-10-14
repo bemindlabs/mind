@@ -100,6 +100,8 @@ import {
   type CollectionState,
 } from "../memory/store-admin.ts";
 import { vectorEndpoints } from "../memory/endpoints.ts";
+import { IMPORTED_DIR } from "../memory/ingest.ts";
+import { MEMORY_DIR } from "../memory/sources.ts";
 import { dataRoot, stateRoot } from "../state.ts";
 import type { SubjectId } from "../types.ts";
 import { dataMap, subjectTrees } from "./map.ts";
@@ -162,6 +164,12 @@ export interface EraseRequest {
   readonly soulName: string | null;
   /** Values `person.md` held, so AC5 can look for them in what is kept. */
   readonly personalValues: readonly string[];
+  /**
+   * The vector collection's name, typed by the owner (`--vectors-not-reached <name>`), to go on when Mind wrote
+   * vectors for this subject and the store does not answer. Only the exact name counts. It never opens anything
+   * else, and it never makes the run `erased-and-verified`: the collection stays listed as not reached (B1).
+   */
+  readonly acknowledgeUnreached?: string;
 }
 
 /** One tree that goes whole, planned by the observer's walker. */
@@ -193,6 +201,11 @@ export interface VectorProbe {
   readonly marker: RagMarker | "unreadable" | null;
   /** `null` when {@link url} is. */
   readonly state: CollectionState | null;
+  /**
+   * The marker says Mind wrote here, the store could not be asked, and the owner typed the collection's name to go
+   * on anyway. The collection is then reported as not reached, never as gone.
+   */
+  readonly unreached: boolean;
 }
 
 /** Everything a run would do, worked out before anything is touched. */
@@ -242,6 +255,13 @@ export interface ErasePlan {
   readonly ledger: ForgetPlan;
   readonly reserved: readonly ReservedProbe[];
   readonly vector: VectorProbe;
+  /**
+   * The owner's own notes that `mind memory ingest` copied into the agent repository (`memory/imported/`), by absolute
+   * path. They are not on the data map: they are files of the owner's git repository, copied from files that are the
+   * owner's, and nothing in them says whose they are. Erase lists them and does not remove them; while any is there the
+   * verdict is not `erased-and-verified` (D-187).
+   */
+  readonly yours: readonly string[];
   /** Backup manifests that could not be read. Reported, never fatal. */
   readonly unreadableManifests: readonly string[];
   /** What the verification will look for. Built before deletion, on purpose. */
@@ -443,7 +463,10 @@ export async function planErase(
   }
 
   // --- the vector collection (S4.1, D-038) --------------------------------
-  const vector = await probeVector(env, subject, ragDir, refusals, notes);
+  const vector = await probeVector(env, subject, ragDir, request.acknowledgeUnreached, refusals, notes);
+
+  // --- the owner's imported notes: named, never removed (D-187) -------------
+  const yours = agentDir === null ? [] : [...(await census(join(agentDir, MEMORY_DIR, IMPORTED_DIR))).paths].sort();
 
   // --- the places that are not built --------------------------------------
   const reserved: ReservedProbe[] = [];
@@ -559,6 +582,7 @@ export async function planErase(
     ledger,
     reserved,
     vector,
+    yours,
     unreadableManifests: manifests.unreadable,
     needles,
     personalNeedles,
@@ -580,6 +604,7 @@ async function probeVector(
   env: EraseEnv,
   subject: SubjectId,
   ragDir: string,
+  acknowledged: string | undefined,
   refusals: string[],
   notes: string[],
 ): Promise<VectorProbe> {
@@ -593,11 +618,27 @@ async function probeVector(
         ? configured.endpoints.qdrantUrl
         : null;
 
+  // What the owner may type to go on without the store, and what the certificate will then say (B1).
+  const notReached = `not reached: vector collection ${collection}`;
+  const ways = (why: string): string =>
+    `Nothing was certified: the collection ${collection} may still hold their text. Run again when the store is ` +
+    `up. If it is gone for good, pass --vectors-not-reached ${collection} to erase everything else: the ` +
+    `certificate then says "${notReached}" and is never erased-and-verified.` + why;
+  const wrongName =
+    acknowledged !== undefined && acknowledged !== collection
+      ? ` (--vectors-not-reached ${JSON.stringify(acknowledged)} does not match: the name to type is ${collection})`
+      : "";
+  const mayGoOn = acknowledged === collection;
+
   if (url === null) {
     if (marker === "unreadable") {
+      if (mayGoOn) {
+        notes.push(`${ragDir} cannot be read to say where vectors were written. ${notReached}.`);
+        return { collection, url: null, marker, state: null, unreached: true };
+      }
       refusals.push(
         `${ragDir} records that vectors were written for this subject, and cannot be read to say ` +
-          `where. Nothing was certified: the collection ${collection} may still exist.`,
+          `where. ${ways(wrongName)}`,
       );
     } else if (!configured.ok) {
       notes.push(
@@ -605,17 +646,24 @@ async function probeVector(
           `one for this subject.`,
       );
     }
-    return { collection, url: null, marker, state: null };
+    return { collection, url: null, marker, state: null, unreached: false };
   }
 
   const state = await collectionState(url, subject);
+  let unreached = false;
   if (state.kind === "unreachable") {
     if (marker !== null) {
-      refusals.push(
-        `Mind wrote vectors for this subject to ${url} and cannot reach it now ` +
-          `(${state.reason}). Nothing was certified: the collection ${collection} may still hold ` +
-          `their text. Run again when the store is up.`,
-      );
+      if (mayGoOn) {
+        unreached = true;
+        notes.push(
+          `Mind wrote vectors for this subject to ${url} and cannot reach it now (${state.reason}). ` +
+            `Going on at the owner's word: ${notReached}.`,
+        );
+      } else {
+        refusals.push(
+          `Mind wrote vectors for this subject to ${url} and cannot reach it now (${state.reason}). ${ways(wrongName)}`,
+        );
+      }
     } else {
       notes.push(
         `the vector store at ${url} did not answer (${state.reason}). Mind holds no record of ` +
@@ -624,7 +672,7 @@ async function probeVector(
       );
     }
   }
-  return { collection, url, marker, state };
+  return { collection, url, marker, state, unreached };
 }
 
 /** One tree, after the deletions, counted again from disk. */
@@ -879,6 +927,16 @@ export interface EraseVerification {
    * from `nothing-found`.
    */
   readonly unreadableScopes: readonly string[];
+  /**
+   * Things this run did not reach and goes on without at the owner's word, as the certificate prints them:
+   * `vector collection <name>`. Any entry keeps the verdict away from `erased-and-verified` (B1).
+   */
+  readonly notReached: readonly string[];
+  /**
+   * The owner's imported notes still in `memory/imported/`, by path, read again after the run. Never removed by erase,
+   * and never counted as verified: any entry keeps the verdict away from `erased-and-verified` (D-187).
+   */
+  readonly yoursToDelete: readonly string[];
   readonly verdict: EraseVerdict;
 }
 
@@ -956,9 +1014,14 @@ export async function verifyErase(
 
   const found = whatWasFound(plan);
   const removed = whatWasRemoved(result);
+  const notReached = notReachedBy(plan);
+  const yoursToDelete =
+    plan.agentDir === null ? [] : [...(await census(join(plan.agentDir, MEMORY_DIR, IMPORTED_DIR))).paths].sort();
 
   const clean =
     !vectorLeft &&
+    notReached.length === 0 &&
+    yoursToDelete.length === 0 &&
     remainingFiles === 0 &&
     failures === 0 &&
     search.deletableHits === 0 &&
@@ -992,6 +1055,13 @@ export async function verifyErase(
     removed,
     filesRead,
     unreadableScopes,
+    notReached,
+    yoursToDelete,
     verdict,
   };
+}
+
+/** What the owner told this run to go on without, in the words the certificate prints (B1). */
+export function notReachedBy(plan: ErasePlan): readonly string[] {
+  return plan.vector.unreached ? [`vector collection ${plan.vector.collection}`] : [];
 }

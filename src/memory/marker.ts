@@ -5,16 +5,18 @@
  * A vector collection lives in another program's storage. When that program is
  * down, "I asked and it was not there" and "I could not ask" look the same from
  * the outside, and only the second one may still hold the subject's text. So
- * {@link indexAgent}'s vector half writes this file **before** it creates the
- * collection: if the file exists, a collection may exist, and an `erase` that
- * cannot reach the store refuses rather than certifying over it.
+ * {@link indexAgent}'s vector half writes this file **after the store has
+ * answered and before** it creates the collection: if the file exists, a
+ * collection may exist, and an `erase` that cannot reach the store refuses
+ * rather than certifying over it. A store that never answered was never
+ * written to, so it gets no file (B1 of the first stranger run, 14 October).
  *
  * It lives under the state root, per subject, and `erase` removes it as a tree
  * of the `rag` place — the file names the subject, and AC3 searches the state
  * root for the subject afterwards.
  */
 
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { stateRoot } from "../state.ts";
 import type { SubjectId } from "../types.ts";
@@ -62,6 +64,12 @@ export async function writeRagMarker(dir: string, subject: SubjectId, qdrantUrl:
   const temp = `${path}.${process.pid}`;
   await writeFile(temp, `${JSON.stringify(marker, null, 2)}\n`, { mode: 0o600 });
   await rename(temp, path);
+}
+
+/** Take back a marker this run wrote and no collection backs. The directory goes too when that leaves it empty. */
+export async function removeRagMarker(dir: string): Promise<void> {
+  await rm(join(dir, RAG_MARKER_FILE), { force: true });
+  await rmdir(dir).catch(() => undefined);
 }
 
 /**

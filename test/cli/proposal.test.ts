@@ -292,6 +292,22 @@ describe("deciding", () => {
     );
   }, 30_000);
 
+  test("refusing says what has now been refused — the refusal just made included, not the list from before it (B6)", async () => {
+    const box = await sandbox();
+    const filed = await file(box, "delete the old logs");
+    const refused = await run(box, ["proposal", "decide", filed.id, SOUL, "--subject", SUBJECT, "--refuse", "--note", "not now"]);
+    expect(refused.code).toBe(0);
+    expect(refused.stderr).not.toContain("Nothing has been refused");
+    expect(refused.stderr).toContain("1 thing(s) this subject has been refused");
+    expect(refused.stderr).toContain("delete the old logs");
+    expect(refused.stderr).toContain("note: not now");
+
+    // Approving a proposal refuses nothing, and says so truthfully.
+    const another = await file(box, "restart the service");
+    const approved = await run(box, ["proposal", "decide", another.id, SOUL, "--subject", SUBJECT, "--approve"]);
+    expect(approved.stderr).toContain("1 thing(s) this subject has been refused");
+  }, 60_000);
+
   test("neither flag, both flags, and an id nothing filed are each refused", async () => {
     const box = await sandbox();
     const filed = await file(box, "delete the old logs");

@@ -93,6 +93,51 @@ describe("mind web off a terminal (D-162)", () => {
   }, 60_000);
 });
 
+describe("mind web's schedule (B4 of the stranger run)", () => {
+  const TRIGGERS = `+++\nschema = "mind/triggers@1"\n\n[tidy-inbox]\nevery = "1d"\nprompt = "Look at the notes."\n+++\n\nBody.\n`;
+
+  /** Start the page on `target`, read its port from the banner, ask `/api/state` with the key, stop it. */
+  async function stateOf(target: string, env: Record<string, string>, home: string) {
+    const keyFile = join(home, "web.key");
+    const child = Bun.spawn([BUN, "run", BIN, "web", target, "--subject", "example", "--port", "0", "--key-file", keyFile], { cwd: ROOT, env, stdout: "pipe", stderr: "pipe", stdin: "ignore" });
+    const out = { text: "" }, err = { text: "" };
+    const reading = Promise.all([collect(child.stdout, out), collect(child.stderr, err)]);
+    try {
+      expect(await waitFor(() => out.text.includes(BANNER_END) || child.exitCode !== null), err.text).toBe(true);
+      const port = /http:\/\/127\.0\.0\.1:(\d+)\//.exec(out.text)?.[1];
+      expect(port, out.text).toBeDefined();
+      const key = (await readFile(keyFile, "utf8")).trim();
+      const response = await fetch(`http://127.0.0.1:${port}/api/state`, { headers: { "x-mind-token": key } });
+      expect(response.status).toBe(200);
+      return (await response.json()) as { triggers: { id: string; every: string; next: string }[] };
+    } finally {
+      child.kill("SIGTERM");
+      await child.exited;
+      await reading;
+    }
+  }
+
+  test("a trigger in the agent's soul/ is listed when the page is started on the repository root", async () => {
+    const t = await setup();
+    await writeFile(join(t.soul, "triggers.md"), TRIGGERS);
+    const state = await stateOf(join(t.home, "agent"), t.env, t.home);
+    expect(state.triggers).toEqual([{ id: "tidy-inbox", every: "1d", next: "now" }]);
+  }, 60_000);
+
+  test("started on the soul/ directory itself, it is listed as before", async () => {
+    const t = await setup();
+    await writeFile(join(t.soul, "triggers.md"), TRIGGERS);
+    const state = await stateOf(t.soul, t.env, t.home);
+    expect(state.triggers.map((trigger) => trigger.id)).toEqual(["tidy-inbox"]);
+  }, 60_000);
+
+  test("no triggers.md anywhere: an empty schedule", async () => {
+    const t = await setup();
+    const state = await stateOf(join(t.home, "agent"), t.env, t.home);
+    expect(state.triggers).toEqual([]);
+  }, 60_000);
+});
+
 // util-linux `script` gives the child a real pty; where it is missing (macOS ships a BSD one with other flags),
 // the formatter's own test (test/web/banner.test.ts) still covers the terminal case.
 const SCRIPT = process.platform === "linux" ? Bun.which("script") : null;

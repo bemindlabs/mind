@@ -368,7 +368,7 @@ export const SPAWN_ONLY = new Map<string, HeldAtSize>([
   // and parked, exit 6, and resume taking a parked task.
   // 869 since the review of PR #31: exit 75 (left for resume) and `loginctl enable-linger`.
   // 895 since EXEC-02 and EEA-01: `mind doctor` also exits 1 for a readable LiteLLM master key, and the entry says so.
-  ["bin/usage.ts", { lines: 879, why: "help text — one declaration, 895 lines of prose" }],
+  ["bin/usage.ts", { lines: 885, why: "help text — one declaration, 901 lines of prose" }],
   // The commands. Each is `cmdX(rest)` returning an exit code, and each reads
   // `process.env`, `homedir()` or `cwd` on its way. Calling them in-process
   // would mean swapping `HOME` inside the test runner; the tests spawn instead.
@@ -380,10 +380,10 @@ export const SPAWN_ONLY = new Map<string, HeldAtSize>([
   ["bin/commands/backends.ts", { lines: 58, why: "command — run by spawning the CLI (test/cli/backends.test.ts runs it end to end)" }],
   // 113 since D-163 (Q4-D2): a line saying which backends are capped and the unit hints (src/exec/cap.ts and workdir.ts, on the floor, build them).
   // 117 since D-181: the line saying where the egress judge stands (src/egress/judge-mode.ts, on the floor, builds it).
-  ["bin/commands/doctor.ts", { lines: 117, why: "command — run by spawning the CLI (the LiteLLM key and own addresses it reads: readLiteLLMKey, checkLocalAction)" }],
+  ["bin/commands/doctor.ts", { lines: 119, why: "command — run by spawning the CLI (the LiteLLM key and own addresses it reads: readLiteLLMKey, checkLocalAction)" }],
   // 266 since odd3: `printErasePlan` takes the stream it writes to, and
   // `cmdErase` picks stderr under `--json` so stdout is the document alone.
-  ["bin/commands/erase.ts", { lines: 351, why: "command — run by spawning the CLI" }],
+  ["bin/commands/erase.ts", { lines: 358, why: "command — run by spawning the CLI" }],
   // S13.1. The plan itself is `src/deploy/` (target, plan, commands, render),
   // on the floor and tested there; what is here is the parsing, the soul check,
   // the two output shapes and the not-built subcommands — spawn-only, and run
@@ -402,7 +402,7 @@ export const SPAWN_ONLY = new Map<string, HeldAtSize>([
   ["bin/commands/egress.ts", { lines: 101, why: "command — run by spawning the CLI" }],
   ["bin/commands/triggers.ts", { lines: 156, why: "command — run by spawning the CLI" }],
   // 171 since D-181: the closing lines say where the egress judge stands and how many needles a new agent has.
-  ["bin/commands/setup.ts", { lines: 171, why: "command — run by spawning the CLI" }],
+  ["bin/commands/setup.ts", { lines: 150, why: "command — run by spawning the CLI" }],
   // 221 since S15.8: `serve` reads the agent's key once at start and puts its public half on the card —
   // read, never made; a key it may not use is said on stderr and the card says there is none.
   // 233 since D-181: the judge is resolved for the send (the filter's and the judge's findings through one call), the
@@ -445,7 +445,7 @@ export const SPAWN_ONLY = new Map<string, HeldAtSize>([
   // 453 with main's #28 and #29 (the printed link moved to src/web/banner.ts; approvalLists) and the tasks.
   // 461 since EXEC-02: the call that makes this process not dumpable, and the line it prints when it could not
   // (src/exec/fence.ts engineNotDumpable and notDumpableNote, on the floor; test/exec/dumpable.test.ts).
-  ["bin/commands/web.ts", { lines: 461, why: "command — serves until Ctrl-C; its parts are tested in src/web (the --qr print: src/web/qr.ts; the printed link, D-162: src/web/banner.ts and test/cli/web.test.ts; the key change: startWeb + replaceKey; the push wiring and 30 s watch, per page key: src/web/push.ts, checked live against a loopback relay 2026-09-27; tasks and their held actions: src/task/screen.ts and src/task/answer.ts)" }],
+  ["bin/commands/web.ts", { lines: 464, why: "command — serves until Ctrl-C; its parts are tested in src/web (the --qr print: src/web/qr.ts; the printed link, D-162: src/web/banner.ts and test/cli/web.test.ts; the key change: startWeb + replaceKey; the push wiring and 30 s watch, per page key: src/web/push.ts, checked live against a loopback relay 2026-09-27; tasks and their held actions: src/task/screen.ts and src/task/answer.ts)" }],
   // 911 since D-152: `memory ask` (routing, egress, ledger, a read-only chain) — run by test/cli/memory-ask.test.ts;
   // its words and arithmetic are src/memory/ask.ts, on the floor.
   // 923 since the PR #14 review: no-tools backends only, relevance before the split; an ignored stop is ended by
@@ -467,7 +467,7 @@ export const SPAWN_ONLY = new Map<string, HeldAtSize>([
   // 491 since the D-153 follow-up and the PR #29 review: `--refile` also takes an approval no turn will run, says
   // which in its `changed` and its exit message, and asks the store's one twin rule (`askedAgain`) instead of
   // `blockingProposal`, naming the twin when its what was asked again already.
-  ["bin/commands/proposal.ts", { lines: 492, why: "command — run by spawning the CLI" }],
+  ["bin/commands/proposal.ts", { lines: 495, why: "command — run by spawning the CLI" }],
   ["bin/commands/rebuild.ts", { lines: 38, why: "command — run by spawning the CLI" }],
   // 570 since S15.8: `soul card` reads the agent's key — never makes one — and prints its public half.
   // 572 since D-142: `soul verify --model` is routed per backend the way `turn` routes it.
