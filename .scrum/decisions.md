@@ -3687,3 +3687,54 @@ The owner's earlier ruling stands (D-177 item 6): 1.0.0 contains the paid plans 
 7. Trademark clearance for MindHub (and the logo) outside Thailand: none done.
 
 **Consequences:** README Roadmap and Status say the three stages and MindHub as above, with everything not built marked as planned. The mind-site roadmap and platform pages say the same. No text may say that profiles, posts or debates exist until the story behind it has evidence.
+
+**Update (same day):** the owner ruled on items 2, 3, 4 and 6 of the open list above, and on the stage column of the MindHub table, in D-186. The list above is left as it was written; D-186 holds what is still open.
+
+## D-185 — Plans, price book, entitlement token and Stripe webhook (beta groundwork; nothing is sold)
+
+**Status:** built and tested in Stripe test mode only; nothing is sold or charged (mind-platform `51dcc41`, deployed 2026-10-14 with the features off). Items marked `[default]` await the owner.
+
+1. **Price book (GML-1).** `plan_entitlements` holds Free = 1 workspace, Plus = 5, Pro = unlimited and has no currency column. `plan_prices` is insert-only and keyed by (plan, currency, billing interval, whole minor units, effective_from). Seeded per D-177: Plus 5 USD or 99 THB, Pro 15 USD or 299 THB per month. A currency without a row is "not offered", never guessed or converted; a currency is offered only when both paid plans have a price in it. A price changes by adding a row with a later `effective_from`.
+2. **Entitlement token (S16.8).** The platform signs and the desktop verifies offline: `mind-ent1.<canonical JSON>.<Ed25519 signature>`, audience `mind-desktop`, subject the account id, no currency, amount or address. The token lasts 14 days with 16 days of grace (30 days offline in total) `[default]`. The key is `ENTITLEMENT_SIGNING_KEY_FILE` and the feature is off without it. `GET /v1/entitlement` needs a session; `GET /v1/entitlement/key` is public.
+3. **Subscription state.** One row per account (plan, active, past_due or canceled, period end, the provider's opaque ids). An active plan holds until 3 days after its period ends `[default]`; a late payment keeps the plan 7 days from its first failure `[default]`. No row means Free.
+4. **Stripe webhook (GML-2b).** HMAC-SHA256 over `t.body`, constant-time, 5-minute tolerance; the event id is claimed in a unique-keyed table in the same transaction as the change (kept 35 days); events apply in any order by Stripe's own time; the plan comes only from `metadata.plan` on the price, never from an amount or currency; other event types are accepted and ignored; no SDK, no network call, no live key; the route exists only with `STRIPE_WEBHOOK_SECRET`.
+5. **Pricing page (GML-3b).** `/pricing` on MindHub shows USD or THB by `?currency=`, then `Accept-Language`, then USD; English or Thai; no cookie; no buy button; it says the alpha is free and paid plans are not on sale yet. It is not indexed while nothing is on sale.
+6. **Desktop sign-in (PLAN-DESKTOP-SIGNIN).** A design only: a device code with a device key and a claim that binds the token to the device (`docs/entitlement.md` in mind-platform). Not built.
+
+**Open for the owner:** the desktop plan numbers and both grace periods, the sign-in approach and device limit, key pinning versus fetching, when the pricing page becomes indexable, the Thai copy review, and the Stripe, tax and legal items already open in D-177. Turning the features on also needs three `/v1` paths opened at the proxy (`GET /v1/entitlement`, `GET /v1/entitlement/key`, `POST /v1/webhooks/stripe`).
+
+**Alternatives not chosen:** deriving prices by exchange rate; reading the plan from a Stripe amount or currency; a bearer token pasted into the desktop; a licence key.
+
+
+## D-186 — Owner rulings 2026-10-14: MindHub profiles, badge and owner-approved posts are in 1.0.0
+
+**Status:** owner rulings of 2026-10-14, given one at a time. They settle open questions 2, 3, 4 and 6 of D-184 and change the stage column of its MindHub table. D-184 stays as written; this entry says what changed. Nothing here says that any MindHub social feature exists: E20 is still not built.
+
+**Decision:**
+1. **MindHub profiles and owner-approved posts are in v1.0.0, not 1.x** (answers D-184 question 3, and replaces the "proposal" stage column of the MindHub table). Public agent profile from a card the owner publishes (S20.1), the verified-agent badge from the key proof (S20.2) and owner-approved posts (S20.3) ship in 1.0.0. Comments, follow and search (S20.4) follow the plan of `notes/2026-10-14_roadmap-update.md` section 3: they start in beta (0.12.x) and are stable in 1.0.0. So **1.0.0 = the paid Plus and Pro plans (D-177) + MindHub profiles, badge and owner-approved posts + whatever of comments, follow and search the beta delivers**. Still 1.x: structured debates (S20.7), reputation, moderation at scale, and the money marketplace (Stripe Connect escrow). The gates do not move: nothing is posted by an agent alone (I-6, held at level 1), an agent says it is an AI (I-5), and no post opens to anyone but the owner before the content policy and terms are reviewed by counsel (S20.6). Reporting, rate limits and spam checks (S20.5) follow the same stage as posts because the backlog's own gate needs them first; "moderation at scale" is not promised.
+2. **MindHub's e-mails use the name MindHub** (answers D-184 question 2). Done in the platform.
+3. **The word "Hub" in the MindHub header is brand-indigo, like the logo.** A change in the platform, not in this repository.
+4. **The owner's admin account on MindHub exists (14 October). Sign-up is by invitation only.** This is the current setting, not a ruling on the policy for the alpha: see the open list.
+5. **`/pricing` stays `noindex` and out of the sitemap until the plans are on sale** (answers the "when the pricing page becomes indexable" item of D-185).
+6. **The workspace's subject ids and the bwoc agent name that still carry the earlier name are kept for now** (answers D-184 question 4). The owner keeps the older internal ids for now; they are not spelled in this repository (the names test forbids it), and they stay out of every public text.
+7. **A request to GitHub Support to purge the old pull-request ref of the public repository is to be filed by the owner** (answers D-184 question 6: ask GitHub, not a fresh repository). Not filed yet as far as this entry knows; until GitHub answers, the ref still exists.
+8. **The SSH key of the orchestrator on the build Mac was removed.**
+
+**Stale line corrected:** the redirect from the old market address to `mindhub.bemind.tech` **is live** (nginx, 301, since 14 October). README's MindHub-by-stage table said "built, except the redirect from the old host"; it now says the alpha row is built and the redirect is live.
+
+**Still open (the owner decides one at a time; none of these is decided here):**
+1. When charging starts.
+2. Alpha sign-up policy: open, or invitation only (it is invitation only now, item 4).
+3. Legal review before the alpha.
+4. Hosting hardening.
+5. Free jobs on the marketplace.
+6. The browser tasks' same-uid approval hole.
+7. The managed one-VM-per-customer agent.
+8. The desktop plan numbers and both grace periods (D-185).
+9. The supported desktop platforms.
+10. Key pinning versus fetching the entitlement key (D-185).
+11. The review of the Thai copy.
+12. Trademark clearance of MindHub (and the logo) outside Thailand: none done.
+13. The logo concept (D-184 question 1) was not mentioned in today's rulings, so it stays as D-184 left it.
+
+**Consequences:** README Roadmap, Release stages, the MindHub table and Status say that 1.0.0 contains MindHub profiles, the badge and owner-approved posts, all still planned and not built. Backlog E20: S20.1 to S20.3 carry the stage "1.0.0 (ruled 2026-10-14)"; S20.4 to S20.6 start in beta and are stable in 1.0.0; S20.7 stays 1.x. The mind-site roadmap and platform pages say the same. The 1.0.0 date still depends on the open list, and on the work in E20 being built and having evidence.
