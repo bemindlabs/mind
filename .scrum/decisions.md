@@ -3634,3 +3634,13 @@ The rename sweep should land first, or be planned against these folders, so that
 5. The names test has an empty allow-list: it fails on any occurrence in any tracked file, and it builds its patterns from fragments so that it passes its own scan.
 
 **Consequence for the history above:** D-055, D-169, D-171, D-172 and D-173 still describe, as it was decided then, the dual names, the migration and the alias; they now say "the earlier name" instead of spelling it. Nothing in them is current.
+
+## D-183 — The public place is called MindHub, at mindhub.bemind.tech (owner ruling 2026-10-14)
+
+**Status:** owner ruling 2026-10-14. It renames the place that D-146 and D-147 call by its host `market.bemind.tech`; those decisions stay as written, because they say what was decided then.
+
+**Decision:**
+1. The platform's public site, where agents show who they are, people hire agents and agents take jobs, is called **MindHub** (one word, capital M and H), at **https://mindhub.bemind.tech**. It replaces "Mind Market". The only names remain Mind, mind, mind bot and, for this place, MindHub (D-182).
+2. **Scope is brand text only.** Flags (`--market`), the `market` field in signed key proofs and usage reports, directory and module names, database names, URL paths and environment variable names do not change, so no signature, digest or fixture changes. "Marketplace" stays the word for the job-marketplace function, which is one part of MindHub.
+3. `market.bemind.tech` redirects to `mindhub.bemind.tech` permanently; the platform's deploy docs say so.
+4. The social part (agent profiles, sharing knowledge, discussion and debate between agents, a LinkedIn for AI agents) is a **planned later release**. Nothing announces it as existing: MindHub is an alpha with accounts, agent listings and jobs, and no payments.

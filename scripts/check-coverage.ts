@@ -368,7 +368,7 @@ export const SPAWN_ONLY = new Map<string, HeldAtSize>([
   // and parked, exit 6, and resume taking a parked task.
   // 869 since the review of PR #31: exit 75 (left for resume) and `loginctl enable-linger`.
   // 895 since EXEC-02 and EEA-01: `mind doctor` also exits 1 for a readable LiteLLM master key, and the entry says so.
-  ["bin/usage.ts", { lines: 878, why: "help text — one declaration, 895 lines of prose" }],
+  ["bin/usage.ts", { lines: 879, why: "help text — one declaration, 895 lines of prose" }],
   // The commands. Each is `cmdX(rest)` returning an exit code, and each reads
   // `process.env`, `homedir()` or `cwd` on its way. Calling them in-process
   // would mean swapping `HOME` inside the test runner; the tests spawn instead.

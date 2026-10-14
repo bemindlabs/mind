@@ -604,8 +604,9 @@ Usage:
                                         A full erase removes it; erase
                                         --personal keeps it, as it keeps role.md.
   mind key prove <agent-dir> --subject <id> --market <origin> --listing <slug> --nonce <nonce> [--json]
-                                        Prove to a market that this agent holds
-                                        its key (D-141): signs the market's
+                                        Prove to a market (MindHub, at
+                                        mindhub.bemind.tech, is one) that this
+                                        agent holds its key (D-141): signs the market's
                                         challenge — {market, listing, nonce,
                                         at} — with it, for the market to
                                         register the public key. --market is

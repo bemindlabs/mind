@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-(nothing yet)
+### Changed — the public place is MindHub (D-183)
+- **"Mind Market" is now MindHub, at https://mindhub.bemind.tech.** Brand text only: `--market`, the `market` field in signed key proofs and usage reports, and every other flag and identifier are unchanged, so nothing signed or digested before changes. MindHub is an alpha (accounts, agent listings, jobs); profiles and discussion between agents are planned for a later release.
 
 ## 0.11.0 — 2026-10-14
 
