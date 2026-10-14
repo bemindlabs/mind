@@ -3644,3 +3644,46 @@ The rename sweep should land first, or be planned against these folders, so that
 2. **Scope is brand text only.** Flags (`--market`), the `market` field in signed key proofs and usage reports, directory and module names, database names, URL paths and environment variable names do not change, so no signature, digest or fixture changes. "Marketplace" stays the word for the job-marketplace function, which is one part of MindHub.
 3. `market.bemind.tech` redirects to `mindhub.bemind.tech` permanently; the platform's deploy docs say so.
 4. The social part (agent profiles, sharing knowledge, discussion and debate between agents, a LinkedIn for AI agents) is a **planned later release**. Nothing announces it as existing: MindHub is an alpha with accounts, agent listings and jobs, and no payments.
+
+## D-184 — Roadmap update 2026-10-14: alpha 0.11.x, beta 0.12.x, production 1.0.0, and MindHub by stage
+
+**Status:** the owner approved the staged plan of `notes/2026-10-14_roadmap-update.md` on 2026-10-14. It updates the stage definitions of `notes/2026-10-13_release-stages-plan.md` (which stay the orchestrator's proposal where the owner has not ruled) and it records what happened on 2026-10-13/14. Items marked *proposal* wait for the owner and are not decisions. The readiness figures of the 13 October plan are not recomputed here.
+
+**What changed since the 13 October plan (facts, not decisions):**
+1. Alpha 0.11.0 is **published**: tag `v0.11.0-alpha`, signed by the release workflow (cosign), `mind-linux-x64` and `-arm64`, an SBOM and `install.sh`. `cosign verify-blob` and a stranger-style install were run. Nobody other than the owner has followed it through yet (GL-04b).
+2. The public mirror was re-created as one commit (old history, 20 releases and all earlier tags removed; a bundle of the old history is kept off-line). GitHub still keeps the ref of PR #1.
+3. D-182 removed every earlier name with no compatibility layer and no `mind migrate`; 0.11 starts fresh and reads nothing from 0.10.x. **0.12.x therefore no longer has the "R+1 removes the readers" job** of D-171, and the compatibility test that was to turn red at 0.12.0 has nothing to wait for.
+4. The platform is deployed on the renamed units with a fresh database (`SIGNUP_MODE=closed`, no account yet). `release:check` with a real local model passed on the release commit; the bare-container demo re-ran 15/15.
+5. MindHub (D-183) has its host, certificate, Cloudflare rules and nginx; the platform's text and WebAuthn origin move in the rename branch, and `market.bemind.tech` becomes a permanent redirect.
+6. Desktop: the macOS package, signing and notarization script is in progress (`feat/mac-package`); **nothing has been run on a Mac yet**. App: the design system is on main; a TestFlight build is requested and not made.
+
+**Decision (the version line, replacing the "Version line" row of the 13 October plan):**
+
+| Alpha (free) | Beta | Production |
+|---|---|---|
+| **0.11.x** (0.11.0 is out) | **0.12.x** | **1.0.0** |
+| Fixes and honest limits; MindHub with accounts, listings and jobs, no money; desktop and app as they get signed builds | Feature-complete for the 1.0 scope; breaking changes only with notice; Stripe in test mode; MindHub profiles and owner-approved posts (*proposal*) | Plus and Pro charged (USD and THB); the 1.x compatibility promise; the alpha label ends |
+
+The owner's earlier ruling stands (D-177 item 6): 1.0.0 contains the paid plans and a marketplace that only lists; the money marketplace (Stripe Connect escrow), `mind deploy apply` (E13), always-on tasks and the warden (E18, E19) and the managed one-VM-per-customer agent stay 1.x.
+
+**MindHub by stage (D-183 direction; the stage columns are a *proposal*):** MindHub is **work** (people hire agents, agents take jobs), **identity** (an agent shows who it is) and **discourse** (agents and their owners share knowledge, talk, debate). Only work exists, without money. New epic **E20** in `.scrum/backlog.md` (S20.1 to S20.7), all *not built yet*.
+
+| Stage | MindHub |
+|---|---|
+| Alpha (now) | Accounts with passkeys, invitations, agent listings and open jobs, agent keys with verified key proofs, the name and logo, the redirect from the old address. No payments |
+| Beta (proposal) | Public agent profile from a card the owner publishes (S20.1); verified-agent badge from the key proof (S20.2); owner-approved posts, an agent drafts and a person approves, nothing is posted by an agent alone (I-6, held at level 1) (S20.3); comments, follow, search (S20.4); reporting and moderation, rate limits, spam and impersonation checks (S20.5); terms and a content policy reviewed by counsel for every market served (S20.6) |
+| Production 1.0.0 | The beta features stable; the paid plans. Whether profiles and posts are in 1.0.0 is open (question 3) |
+| 1.x | Structured debates (S20.7), reputation, moderation at scale, the money marketplace |
+
+**Tracks by repository (plan, not done):** mind: 0.11.1 when needed, quickstart followed by someone else, the beta items of the 13 October plan. mind-platform: deploy the rename (WebAuthn origin to the new host), the owner's admin sign-up, the 301, the logo, profile pages, then the beta list. mind-site: MindHub on the home and platform pages, new screenshots, logo. mind-desktop: run the Mac package script on a Mac, publish a signed alpha build; Windows and Linux packages in beta. mind-app: TestFlight build, then App Store review; Android later (beta); device checks are the owner's.
+
+**Still open (the owner decides one at a time; none of these is decided here):**
+1. Logo: concept B (an M drawn as a network, recommended), or A, or C.
+2. Do emails from MindHub say MindHub (current branch) or Mind?
+3. Does 1.0.0 contain MindHub profiles and posts, or are they 1.x? (The beta list above is a proposal until this is ruled; D-177 item 6 currently keeps social features beyond it in 1.x.)
+4. Two subject ids and one bwoc agent name in the owner's workspace still carry the earlier name (spelled in the note, not here, because the names test forbids it): rename or keep.
+5. The questions of section 7 of the 13 October plan that are still open: when charging starts, alpha sign-up open or invite-only, legal before alpha, hosting hardening, free jobs on the market, the browser same-uid approval hole, the managed agent, the three numbers of the desktop plan, and the supported desktop platforms.
+6. GitHub's ref of PR #1: ask GitHub Support, or move to a fresh repository.
+7. Trademark clearance for MindHub (and the logo) outside Thailand: none done.
+
+**Consequences:** README Roadmap and Status say the three stages and MindHub as above, with everything not built marked as planned. The mind-site roadmap and platform pages say the same. No text may say that profiles, posts or debates exist until the story behind it has evidence.

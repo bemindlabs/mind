@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed — the roadmap text follows the 14 October plan (D-184)
+- **README Roadmap and Status now state the stages: alpha 0.11.x (0.11.0 is out, tag `v0.11.0-alpha`, signed), beta 0.12.x, production 1.0.0.** The 0.12.x "earlier-name readers removed" job is gone because D-182 left no compatibility layer. MindHub is described as work, identity and discourse, with the stages marked as planned where nothing is built; new epic E20 (S20.1 to S20.7, all not built yet, profiles and posts proposed for beta, debates 1.x) and decision D-184, with the open owner questions listed as open. Text only: no code changed.
+
 ### Changed — the public place is MindHub (D-183)
 - **"Mind Market" is now MindHub, at https://mindhub.bemind.tech.** Brand text only: `--market`, the `market` field in signed key proofs and usage reports, and every other flag and identifier are unchanged, so nothing signed or digested before changes. MindHub is an alpha (accounts, agent listings, jobs); profiles and discussion between agents are planned for a later release.
 
