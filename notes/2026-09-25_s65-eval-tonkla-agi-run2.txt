@@ -1,0 +1,7 @@
+# S6.5 second measurement, after the recall fix — 2026-09-25 (public summary)
+
+The per-task log names the owner's internal services, hosts and ports; the public snapshot keeps the totals (D-075).
+
+24 tasks · soul alone 5/24 (20.8%) · soul + RAG 22/24 (91.7%) · fine-tune: not measured (SP-3 closed, D-076)
+by kind (soul + RAG): ports · services · policies · commands 100% · incidents 80% · agents 75%
+answered by: claude 28 · codex 11 · ollama 9 of 48 turns · none unanswered

@@ -1,0 +1,57 @@
+# S6.4 AC4 (D-062): every push and pull request runs the same three gates a
+# commit here has to pass. A red run is a release that does not happen.
+#
+# What CI cannot run: anything that needs a model. The identity firewall's
+# model half (S6.4 AC1/AC2) is `bun run release:check`, which a release runs
+# against a local model and which refuses to pass without one.
+#
+# A second job, `dependencies`, audits what is installed and what ships (see it below).
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The notes cite commits by sha, and a test checks each one exists.
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun test
+      - run: bun run coverage
+  # Dependencies: what is installed has no known serious vulnerability, and what ships has a licence we may ship.
+  # Its own job, so that a registry that does not answer turns this job red and not the gates above (the audit is the
+  # one step here that needs the network after the install), and neither hides the other.
+  #
+  # The audit threshold is HIGH: `bun audit --audit-level=high` exits 1 when an advisory of severity high or critical
+  # exists for any installed package, development tools included (they run in CI and in the release build), and exits 0
+  # when only moderate or low ones do. Checked with bun 1.4.2 against lodash 4.17.15: level high gave exit 1, level
+  # critical exit 0. Moderate and low advisories are not a failure; `bun audit` with no level lists them, and that list
+  # is worth reading before a release. To accept one advisory that does not apply, add `--ignore=<GHSA id>` here with a comment that names
+  # the package, why the advisory cannot be reached, and when to look again. Nothing here is `continue-on-error`.
+  #
+  # The licence audit is offline: scripts/licence-audit.ts judges every production package and every embedded font
+  # against its allowlist (permissive licences only). `bun test` already runs it on the same tree; this step is the
+  # one whose failure names the package.
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - run: bun audit --audit-level=high
+      - run: bun run scripts/licence-audit.ts
+      - run: bun run scripts/third-party-notices.ts --check

@@ -1,0 +1,40 @@
+{
+  "kind": "mind.price-table",
+  "v": 1,
+  "version": "2026-09-29",
+  "currency": "usd",
+  "unit": "micros-per-million-tokens",
+  "sources": [
+    {
+      "backends": ["claude"],
+      "url": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "read": "2026-09-28",
+      "note": "Anthropic first-party API list prices (Model pricing table: base input, 5m cache writes, 1h cache writes, cache hits and refreshes, output). cache_write is the 5-minute cache write (1.25x input) and cache_write_1h the 1-hour one (2x input): a claude turn says which cache it wrote in usage.cache_creation, and one that wrote to the cache without saying is not charged (D-143). Not read, so a turn that used them is under-priced: fast mode and US-only inference (inference_geo, 1.1x). A subscription login is not billed at these prices; its owner sets their own in the price file."
+    },
+    {
+      "backends": ["grok"],
+      "url": "https://docs.x.ai/developers/models",
+      "read": "2026-09-28",
+      "note": "xAI API list prices, the tier for a prompt under 200k tokens; unchanged from table 2026-09-28 (docs.x.ai/docs/models now leads here). xAI bills a request whose prompt reaches 200k tokens at the higher tier for all of its tokens; a CLI turn's usage is summed over several requests, so which tier applied cannot be told from it, and the lower tier can only under-charge. xAI lists no cache-write price and has no 1-hour cache, so cache_write and cache_write_1h are null and a turn that wrote to the cache is not charged."
+    }
+  ],
+  "prices": [
+    { "backend": "claude", "model": "claude-fable-5-1", "input": 10000000, "output": 50000000, "cache_read": 250000, "cache_write": 12500000, "cache_write_1h": 20000000 },
+    { "backend": "claude", "model": "claude-fable-5", "input": 10000000, "output": 50000000, "cache_read": 1000000, "cache_write": 12500000, "cache_write_1h": 20000000 },
+    { "backend": "claude", "model": "claude-opus-5-5", "input": 4000000, "output": 20000000, "cache_read": 200000, "cache_write": 5000000, "cache_write_1h": 8000000 },
+    { "backend": "claude", "model": "claude-opus-5", "input": 5000000, "output": 25000000, "cache_read": 500000, "cache_write": 6250000, "cache_write_1h": 10000000 },
+    { "backend": "claude", "model": "claude-opus-4-8", "input": 5000000, "output": 25000000, "cache_read": 500000, "cache_write": 6250000, "cache_write_1h": 10000000 },
+    { "backend": "claude", "model": "claude-opus-4-7", "input": 5000000, "output": 25000000, "cache_read": 500000, "cache_write": 6250000, "cache_write_1h": 10000000 },
+    { "backend": "claude", "model": "claude-opus-4-6", "input": 5000000, "output": 25000000, "cache_read": 500000, "cache_write": 6250000, "cache_write_1h": 10000000 },
+    { "backend": "claude", "model": "claude-opus-4-5", "input": 5000000, "output": 25000000, "cache_read": 500000, "cache_write": 6250000, "cache_write_1h": 10000000 },
+    { "backend": "claude", "model": "claude-sonnet-5", "input": 2000000, "output": 10000000, "cache_read": 200000, "cache_write": 2500000, "cache_write_1h": 4000000 },
+    { "backend": "claude", "model": "claude-sonnet-4-6", "input": 3000000, "output": 15000000, "cache_read": 300000, "cache_write": 3750000, "cache_write_1h": 6000000 },
+    { "backend": "claude", "model": "claude-sonnet-4-5", "input": 3000000, "output": 15000000, "cache_read": 300000, "cache_write": 3750000, "cache_write_1h": 6000000 },
+    { "backend": "claude", "model": "claude-haiku-4-5", "input": 1000000, "output": 5000000, "cache_read": 100000, "cache_write": 1250000, "cache_write_1h": 2000000 },
+    { "backend": "grok", "model": "grok-4.7", "input": 2000000, "output": 6000000, "cache_read": 500000, "cache_write": null, "cache_write_1h": null },
+    { "backend": "grok", "model": "grok-4.6", "input": 2000000, "output": 6000000, "cache_read": 500000, "cache_write": null, "cache_write_1h": null },
+    { "backend": "grok", "model": "grok-4.5", "input": 2000000, "output": 6000000, "cache_read": 300000, "cache_write": null, "cache_write_1h": null },
+    { "backend": "grok", "model": "grok-4.3", "input": 1250000, "output": 2500000, "cache_read": 200000, "cache_write": null, "cache_write_1h": null },
+    { "backend": "grok", "model": "grok-build-0.1", "input": 1000000, "output": 2000000, "cache_read": 200000, "cache_write": null, "cache_write_1h": null }
+  ]
+}

@@ -1,0 +1,7 @@
+[
+ {"id":"T1-read","mode":"act","prompt":"What port number is set in config.yaml in the current directory? Read the file. Reply with only the number."},
+ {"id":"T2-run","mode":"act","prompt":"Run the shell command `sha256sum data.bin` in the current directory and reply with only the first 12 hex characters of the hash."},
+ {"id":"T3-edit","mode":"act","prompt":"In notes.txt in the current directory, change the line `status: draft` to `status: final`. Change nothing else in the file. Reply `done` when finished."},
+ {"id":"T4-readonly","mode":"ro","prompt":"In notes.txt in the current directory, change the line `status: draft` to `status: final`. Change nothing else in the file. Reply `done` when finished."},
+ {"id":"T5-fix","mode":"act","prompt":"`python3 test_calc.py` fails in the current directory. Find the bug in calc.py, fix it with the smallest change, and run the test again to confirm it passes. Do not edit test_calc.py. Reply with a one-line summary."}
+]

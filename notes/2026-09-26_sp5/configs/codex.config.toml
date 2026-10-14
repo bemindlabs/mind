@@ -1,0 +1,40 @@
+# SP-5 (D-097) isolated codex config. Loopback LiteLLM only; no cloud auth in this CODEX_HOME.
+# Validated with `codex exec --strict-config` on codex-cli 0.155.1 (every key below is recognised).
+model = "local-coder"
+model_provider = "litellm"
+approval_policy = "never"
+check_for_update_on_startup = false   # no update check
+web_search = "disabled"               # no hosted web-search tool
+
+[model_providers.litellm]
+name = "LiteLLM (local vLLM qwen3.8-27b)"
+base_url = "http://127.0.0.1:10400/v1"
+env_key = "LITELLM_API_KEY"           # key comes from the runner's env, never stored here
+wire_api = "responses"                # /v1/responses works through LiteLLM; "chat" not needed
+
+[features]
+plugins = false          # else: git ls-remote/fetch https://github.com/openai/plugins.git + HTTPS to chatgpt.com on every start
+remote_plugin = false
+apps = false             # ChatGPT apps/connectors
+shell_snapshot = false   # else: the login-shell snapshot re-exports the FULL parent env (incl. LITELLM_API_KEY) into model shell commands, bypassing shell_environment_policy
+
+[analytics]
+enabled = false
+
+[feedback]
+enabled = false
+
+[otel]
+exporter = "none"
+metrics_exporter = "none"
+trace_exporter = "none"
+log_user_prompt = false
+
+[shell_environment_policy]
+inherit = "core"
+exclude = ["*KEY*", "*TOKEN*", "*SECRET*"]
+
+[history]
+persistence = "none"
+
+# (per-run [projects."…"] trust entries that codex appended were removed from this copy)

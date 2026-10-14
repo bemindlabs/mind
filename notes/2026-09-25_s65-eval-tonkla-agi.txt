@@ -1,0 +1,6 @@
+# S6.5 first measurement — 2026-09-25 (public summary)
+
+The per-task log names the owner's internal services, hosts and ports; the public snapshot keeps the totals (D-073).
+
+24 tasks · soul alone 3/24 (12.5%) · soul + RAG 19/24 (79.2%) · fine-tune: not measured
+by kind (soul + RAG): policies 100% · services 100% · agents 75% · ports 75% · commands 66.7% · incidents 60%

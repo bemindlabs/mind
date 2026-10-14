@@ -1,0 +1,8 @@
+# Keep the CI actions current. The runtime dependencies are few and pinned in bun.lock on purpose;
+# they are updated by hand, with the gates run against the new versions.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

@@ -1,0 +1,6 @@
+# local state ที่สร้างใหม่ได้ (D-014)
+/.mind/
+node_modules/
+# build artefact — `bun build --compile` makes a ~78 MB binary here.
+# Not ignored until 2026-09-21, which meant `git add -A` could commit it.
+/dist/

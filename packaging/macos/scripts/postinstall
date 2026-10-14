@@ -1,0 +1,13 @@
+#!/bin/bash
+# Runs as root after the files are in place. Opens Terminal with `mind setup`
+# for whoever is logged in at the console. Never fails the install: setup is an
+# offer, and `mind setup` can be typed any time. Set MIND_NO_SETUP=1 (or
+# install from a script with no console user) to skip it.
+[ -n "${MIND_NO_SETUP:-}" ] && exit 0
+user="$(stat -f %Su /dev/console 2>/dev/null)"
+case "$user" in ""|root|loginwindow) exit 0 ;; esac
+uid="$(id -u "$user" 2>/dev/null)" || exit 0
+launchctl asuser "$uid" sudo -u "$user" /usr/bin/osascript \
+  -e 'tell application "Terminal" to activate' \
+  -e 'tell application "Terminal" to do script "/usr/local/bin/mind setup"' >/dev/null 2>&1 || true
+exit 0

@@ -1,0 +1,11 @@
+{
+  "agentId": "agent-example",
+  "agentRole": "Tends a synthetic example agent directory",
+  "buildCmd": "true",
+  "name": "example-agent",
+  "outOfScope": "Does not touch anything outside its own directory, and confirms before any change that is hard to undo",
+  "primaryModel": "none",
+  "scopeDescription": "Reads the example fixture; answers questions about it; reports plainly what it skipped",
+  "testCmd": "true",
+  "version": "3.0"
+}

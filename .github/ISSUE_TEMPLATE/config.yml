@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/bemindlabs/mind/security/advisories/new
+    about: Privately, so only the maintainers see it. Never as a public issue.
+  - name: How to use it
+    url: https://github.com/bemindlabs/mind#set-up-an-agent
+    about: Setting up an agent, the commands, and mind doctor.

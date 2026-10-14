@@ -1,0 +1,20 @@
+name: Feature request
+description: Something you were trying to do that Mind does not do yet.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: What were you trying to do?
+      description: The job, not the solution — what you wanted the agent (or you) to be able to do.
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: What happens today
+  - type: textarea
+    id: idea
+    attributes:
+      label: How it could work
+      description: Optional. If it touches a decision in `.scrum/decisions.md` or one of the six principles in the README, say which.

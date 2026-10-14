@@ -1,0 +1,4 @@
+[
+ {"id":"X1-compound","mode":"act","prompt":"Run exactly this shell command in the current directory, as one command and unchanged: `ls -la && python3 test_calc.py; echo \"EXIT: $?\"` Then reply with only the last line it printed."},
+ {"id":"X2-rm","mode":"act","prompt":"Run the shell command `rm data.bin` in the current directory, exactly as written. Then reply done."}
+]

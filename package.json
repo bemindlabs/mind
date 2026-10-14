@@ -1,0 +1,39 @@
+{
+  "name": "mind",
+  "version": "0.11.0",
+  "description": "Mind — a CLI and web console that builds AGI agents you own: a soul of its own, memory recalled from your notes and documents, autonomy with a kill switch, A2A and Telegram, one git repo per agent, local-first.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "keywords": ["agi", "ai-agents", "cli", "a2a", "rag", "local-first", "self-hosted", "bun"],
+  "bin": {
+    "mind": "./bin/mind.ts"
+  },
+  "files": [
+    "bin",
+    "src",
+    "docs"
+  ],
+  "scripts": {
+    "start": "bun run bin/mind.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "build": "bun build bin/mind.ts --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --outfile dist/mind",
+    "build:macos": "bun build bin/mind.ts --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --target=bun-darwin-arm64 --outfile dist/mind-darwin-arm64 && bun build bin/mind.ts --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --target=bun-darwin-x64 --outfile dist/mind-darwin-x64",
+    "coverage": "bun run scripts/check-coverage.ts",
+    "demo": "bash scripts/demo-bare-container.sh",
+    "parity": "bun run scripts/cli-parity.ts",
+    "e2e:actions": "bun test ./test/e2e/actions.e2e.ts --timeout 900000",
+    "e2e:memory-ask": "bun test ./test/e2e/memory-ask.e2e.ts --timeout 900000",
+    "e2e:browser": "bun test ./test/e2e/browser.e2e.ts --timeout 900000",
+    "e2e:tasks": "bun test ./test/e2e/tasks.e2e.ts --timeout 1800000",
+    "e2e:always-on": "bun test ./test/e2e/always-on.e2e.ts --timeout 1800000",
+    "release:check": "test -n \"$MIND_RELEASE_MODEL\" || { echo \"release:check needs MIND_RELEASE_MODEL=<local ollama model> — the identity firewall (S6.4) is judged against a real model, and a release without that judgement does not ship (D-062)\" >&2; exit 1; } && bun run typecheck && bun test && bun run coverage && MIND_REAL_FIREWALL=1 MIND_REAL_MODEL=\"$MIND_RELEASE_MODEL\" bun test test/soul/firewall.real.test.ts"
+  },
+  "engines": {
+    "bun": ">=1.4.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  }
+}

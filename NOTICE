@@ -1,0 +1,24 @@
+Mind
+Copyright 2026 BeMind Technology
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+The names "Mind" and "BeMind" are not licensed: see TRADEMARKS.md.
+
+This product includes software and fonts written by others. Their licences, in
+full, are in THIRD_PARTY_NOTICES.md, which scripts/third-party-notices.ts makes
+from the lockfile and the embedded fonts for each release.
+
+Inside every compiled `mind` binary (made by `bun build --compile`):
+  - The Bun runtime (https://bun.sh), under the MIT licence. Bun statically
+    links JavaScriptCore, which Bun's licensing page states is LGPL-2 licensed,
+    and libraries with their own licences, which Bun lists in its LICENSE.md.
+
+Inside the web page (`mind web`), embedded in the binary, each under the SIL
+Open Font License, Version 1.1 (licence texts in src/web/fonts/):
+  - Inter - Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)
+  - IBM Plex Sans Thai - Copyright 2019 IBM Corp. All rights reserved.
+
+The QR encoder for pairing (src/web/qr.ts) is this project's own and follows
+the layout of Project Nayuki's QR Code generator library (MIT licence,
+https://www.nayuki.io/page/qr-code-generator-library); no file of it is
+included.

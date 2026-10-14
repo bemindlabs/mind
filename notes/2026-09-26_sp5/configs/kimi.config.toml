@@ -1,0 +1,30 @@
+# SP-5 isolated kimi-code config: LiteLLM loopback only, no Moonshot credentials.
+# The API key is NOT stored here; it is read from env LITELLM_API_KEY (api_key_env).
+default_model = "litellm/local-coder"
+default_plan_mode = false
+merge_all_available_skills = false
+extra_skill_dirs = []
+
+[providers.litellm]
+type = "openai"
+base_url = "http://127.0.0.1:10400/v1"
+api_key_env = "LITELLM_API_KEY"
+model_source = "static"
+
+[models."litellm/local-coder"]
+provider = "litellm"
+model = "local-coder"
+max_context_size = 65536
+max_output_size = 8192
+capabilities = ["tool_use"]
+display_name = "local-coder (qwen3.8-27b via LiteLLM)"
+
+[thinking]
+enabled = false
+
+[model_catalog]
+refresh_on_start = false
+refresh_interval_ms = 0
+
+[loop_control]
+reserved_context_size = 16384

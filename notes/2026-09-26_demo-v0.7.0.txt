@@ -1,0 +1,19 @@
+# demo run 1c88d842 — mind 0.7.0 — 2026-09-26 — bun run demo -- --model qwen3.8:27b
+
+== result
+  PASS  the engine compiles to one self-contained binary 79M, from bin/mind.ts
+  PASS  mind new creates an agent repository           subject demo-1c88d842
+  PASS  the identity is set, and the loader accepts it   all three answers randomised for this run
+  PASS  the clone carries no derived state (I-2)         .mind/ is absent in the fresh clone
+  PASS  a staged typechange carrying a token is blocked (S0.4 AC3, on the host) blocked at link.md, HEAD unmoved, token not echoed — proved on the host, not in the container
+  PASS  no vendor CLI and no runtime in the container (I-1) checked: claude codex gemini grok copilot kimi bun node npm deno python3 git curl wget
+  PASS  the compiled binary runs with no runtime installed mind 0.7.0 on debian:bullseye-slim
+  PASS  rebuild works from what git holds alone (I-2)    fresh — 1 artefact(s) match what the repository holds · built 2026-09-26T08:39:43.912Z
+  PASS  the rebuilt manifest differs only in built_at (S0.3 AC7) same artefacts, same source hashes
+  PASS  with no model reachable, both commands fail      verify exit 1 · turn exit 1, both for the right reason
+  PASS  soul verify passes on the local model (DoD · S0.3 AC4) confirmed on every question of every run, identity carried as a system prompt
+  PASS  a turn finishes on ollama alone (S2.1 AC6)       the default chain fell through to the local model
+  PASS  every recorded turn went to the local model (I-1) 1 line(s), every one of them ollama · 1 answered
+  PASS  erase of a subject never held is nothing-found and touches nothing (S7.2 AC6) exit 3 · nothing-found · 0 removed · 1 file(s) of another subject read and left alone · every file byte-identical afterwards
+  PASS  erase of the subject leaves the id findable nowhere in the container (I-4 · S7.2 AC2/AC3) exit 0 · erased-and-verified · 6 found · 9 removed · git history UNKNOWN, not zero · id found in 0 file(s) and 0 path name(s) outside .git
+demo: 15/15 criteria passed — the DoD of MVP-lite holds on this machine.

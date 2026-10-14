@@ -1,0 +1,49 @@
+name: Bug report
+description: Something Mind does is wrong, or it stops.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. Please take personal data and tokens out of everything below — a made-up value shows the same thing.
+        A security problem goes to **Security → Report a vulnerability**, not here.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `mind --version`.
+      placeholder: "0.6.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [Linux x86_64, Linux arm64, macOS Apple Silicon, macOS Intel, Other]
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Command or page
+      description: The command you ran, or the part of `mind web`.
+      placeholder: "mind turn ~/agents/keeper --subject me --prompt …"
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to show it
+      placeholder: |
+        1. mind new …
+        2. …
+  - type: textarea
+    id: doctor
+    attributes:
+      label: mind doctor
+      description: Its output, with anything personal removed.
+      render: text

@@ -1,0 +1,26 @@
+# Import map for the synthetic example agent.
+#
+# Lives beside the agent directory rather than inside it: the map is a set of
+# judgement calls about an agent, and the agent's own directory is read-only to
+# Mind (D-009).
+#
+# Every `.md` under persona/ and mindsets/ needs a line in [classify]. There is
+# no default — a file with no entry fails the import by name, so a mindset
+# added later cannot slip silently into the wrong half.
+
+[classify]
+"persona/example-buddy.md"        = "role"
+"mindsets/SPEC.md"                = "skip"
+"mindsets/example-ops.md"         = "role"
+"mindsets/example-terse.md"       = "role"
+"mindsets/example-voice.md"       = "person"
+"mindsets/example-no-headings.md" = "person"
+
+# How to read persona/README.md. Labels, not logic: the engine must not know
+# any particular agent's headings (D-021).
+[readme]
+addresses_user_as_row = "Calls the user"
+refers_to_self_as_row = "Refers to itself as"
+tone_section          = "Personality"
+principles_section    = "Core Principles"
+constraints_section   = "Constraints"
