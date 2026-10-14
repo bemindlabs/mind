@@ -2,27 +2,30 @@
 
 By the end you will have an agent of your own, answered by a model that never leaves your computer, and you will
 have tried two things with it: an agent that knows your notes, and an agent that does a chore on a schedule
-(it proposes, you decide). Allow about half an hour, plus the model download.
+(it proposes, you decide). Allow about half an hour, plus the model download. (The commands themselves took under a minute
+on a warm small model when this page was followed by an automated reviewer; the rest of the half hour is reading and
+typing, which is a guess for a person, not a measurement.)
 
 Once Mind and the model are installed, nothing on this page sends your agent's words off your machine (as long as you
 name `--backend ollama`, see step 6), and nothing on this page lets the agent act by itself: every category of its
 autonomy stays at the default, **1: it proposes and does not do**.
 
-> **About the output on this page, and how it was checked.** Every output block was recorded by running the
-> commands on this page, in a throwaway home directory, with Mind built from this tree. The model server was **not a
-> model**: it was a short stand-in script that answers one fixed sentence (and files one proposal when asked to propose),
-> because the machine this was written on had no model to spare for it. So the *shape* of every output, the lines
-> around the answer and the exit codes are real; the *answer text* is the stand-in's, and yours will be the model's
-> own words and take seconds (`<n>s` below), not 0.0. I replaced the throwaway paths with `~` and the stand-in's port with Ollama's
-> usual `11434`. The steps that install things (cosign, Mind from a release, Ollama, `ollama pull`) were **not run**
-> while writing this, because v0.11.0 is not cut yet and no download was allowed. **Nobody other than its writer has yet
-> followed this page on a clean machine.** If you are the first, the places most likely to be wrong are steps 1 and 2:
-> please [open an issue](https://github.com/bemindlabs/mind/issues/new/choose) with what you saw.
+> **About the output on this page, and how it was checked.** The output blocks were first recorded with a stand-in
+> model server (one fixed sentence), so their *shape*, the lines around the answer and the exit codes are real, but the
+> answer text was not a model's. On 2026-10-14 an **automated reviewer** (not a person) then followed this page,
+> step by step, on Linux x86-64 in a throwaway home directory, with the **published release v0.11.0-alpha** (installed with
+> its own `install.sh`, signature checked with cosign) and a **local model** (`gemma3:4b` on an Ollama that was already
+> running; `llama3.2:3b`, which this page names, was **not** run). Every step below that was run is as printed, except where
+> a note says otherwise; your answer text will be your model's own words and take seconds (`<n>s`). The steps that were
+> **not** run: downloading cosign, installing Ollama and `ollama pull`. **No human has yet followed this page on a clean
+> machine.** If you are the first, please [open an issue](https://github.com/bemindlabs/mind/issues/new/choose) with what
+> you saw; the places most likely to be wrong are now steps 1 and 3.
 
 ## 1. What you need
 
 - Linux, x86_64 or arm64, and your own user account. Mind needs no root. (macOS: the README says how to build from source.)
-- `git`, `curl`, `sh`, `sha256sum`. Git needs to know who you are once: `git config --global user.name "Your Name"` and
+- `git`, `curl`, `sh`, `sha256sum`, and [cosign](https://github.com/sigstore/cosign) (step 2: the installer refuses to install
+  without it). Git needs to know who you are once: `git config --global user.name "Your Name"` and
   `git config --global user.email you@example.com`.
 - About 3 GB of free disk and 4 GB of free memory for the model below.
 - A real terminal. `mind setup` asks questions, and a few steps ask you to type a phrase; neither works from a script.
@@ -32,13 +35,17 @@ autonomy stays at the default, **1: it proposes and does not do**.
 Follow [README → Install](../README.md#install): get cosign, then run `install.sh`. In short:
 
 ```bash
-curl -fsSLO https://github.com/bemindlabs/mind/releases/download/v0.11.0/install.sh
+curl -fsSLO https://github.com/bemindlabs/mind/releases/download/v0.11.0-alpha/install.sh
 sh install.sh
 mind --version
 ```
 
-`mind --version` prints the version, for example `0.11.0`. If `~/.local/bin` is not on your `PATH`, `install.sh` says
-so; add it.
+The release is called `v0.11.0-alpha` (a pre-release; there is no `v0.11.0` yet, and a download URL that says `v0.11.0`
+answers `curl: (22) ... 404`). With no `MIND_VERSION` set, `install.sh` installs the newest release, pre-releases included,
+which is this one; `MIND_VERSION=v0.11.0-alpha sh install.sh` pins it. It takes a few seconds and prints `checksum ok`,
+`signature ok (cosign, the release workflow)` and `installed …`. `mind --version` then prints `0.11.0`: the binary
+does not carry the `-alpha` suffix, and `mind update --check` says `mind 0.11.0 is the newest release (latest published:
+v0.11.0-alpha)`. If `~/.local/bin` is not on your `PATH`, `install.sh` says so; add it.
 
 ## 3. A small local model
 
@@ -57,6 +64,9 @@ nothing in Mind depends on it: any chat model Ollama can run works, and a bigger
 ```bash
 export MIND_OLLAMA_MODEL=llama3.2:3b      # the model a turn uses when none is named
 ```
+
+If you have pulled several models, a step that offers "the model" offers the first one in Ollama's list, not the one in
+`MIND_OLLAMA_MODEL`: type the name you want when it asks (step 5).
 
 Ollama listens on `http://127.0.0.1:11434`. If yours listens elsewhere, `export OLLAMA_HOST=http://127.0.0.1:<port>`
 (use a loopback address: that is what Mind counts as this machine).
@@ -133,8 +143,9 @@ subject me · 3 prohibition(s) · 3 principle(s) · discloses it is an AI
 ```
 
 (`mind new` prints a long, plain list of what git keeps whatever you do later and what deleting your data cannot reach.
-Read it once; it is the honest part.) Last, it offers a first turn. Take the defaults, `ollama` and your model. **If the
-backend it offers is anything but `ollama`** (it offers a vendor CLI when Ollama has no model), type `ollama` or `skip`:
+Read it once; it is the honest part.) Last, it offers a first turn. Take `ollama` for the backend, and for the model
+type the one you pulled (the offered default is the first model Ollama lists, which is yours only if you pulled just one).
+**If the backend it offers is anything but `ollama`** (it offers a vendor CLI when Ollama has no model), type `ollama` or `skip`:
 a vendor CLI sends the prompt off your machine.
 
 ```
@@ -147,7 +158,10 @@ mind: route: You named the backend chain, so automatic routing did not change it
 answered by ollama · identity arrived as system · <n>s
 ```
 
-`identity arrived as system` says the soul reached the model as its system prompt. Then commit what you made. The
+`identity arrived as system` says the soul reached the model as its system prompt. After that `setup` prints `Done.`, the
+commit line to run, a line about the egress judge (`on by itself`, idle until you list needles) and a list of next
+commands. **Known problem:** at a terminal `mind setup` can then sit there without giving the prompt back (it is still reading your
+keyboard); press `Ctrl-D` and it ends. The agent is already made. Now commit what you made. The
 repository is yours, and Mind never makes a commit for you:
 
 ```bash
@@ -169,7 +183,7 @@ mind ledger show --subject me
 … now, and Mind cannot take it back` first). For an agent that stays local, always say `--backend ollama`.
 
 The ledger lists each turn: when, which backend received it, how many tokens it said it used. It never shows what was
-said unless you pass `--content`.
+said unless you pass `--content`. If you took `setup`'s first turn, the list has two rows by now, the setup turn and this one.
 
 ```
 when                      backend   outcome    exit  ms       bytes      tokens in/out/total  usage      cost            id
@@ -397,6 +411,9 @@ route is broken, or when a LiteLLM master key lies where a program of yours can 
 | `no triggers.md in <dir> — nothing runs by itself` and the file exists in `soul/` | the `triggers` commands were given the repository root | Give them the `soul/` directory (step 8b). |
 | `mind: nothing was sent — the working directory … contains the agent's repo … and this turn may write` | you raised write or run to 2 and started the turn inside the agent's repository, Mind's own directories, or a directory with credentials in it | Start the turn from a scratch directory. (Nothing on this page raises the dial.) |
 | `install.sh: a verified signature is required … cosign is not installed` | v0.11.0 and later need cosign | [README → Install](../README.md#1-get-cosign-once). |
+| `curl: (22) The requested URL returned error: 404` on `install.sh` | the URL names a tag that does not exist (`v0.11.0`) | Use `v0.11.0-alpha` (step 2). |
+| `mind setup` printed `Done.` and the prompt did not come back | a known problem: it keeps reading the keyboard | Press `Ctrl-D`. |
+| `Mind wrote vectors for this subject to … and cannot reach it now` (from `mind erase`) | `memory index` left a marker and no vector store answers | See [Where to go next](#where-to-go-next), the `mind erase` bullet. |
 
 Still stuck? Say what you ran, what you saw, and `mind --version`, in an
 [issue](https://github.com/bemindlabs/mind/issues/new/choose). Never put a real token or real personal data in one;
@@ -404,11 +421,22 @@ a made-up one shows the same thing. A security problem goes through [SECURITY.md
 
 ## Where to go next
 
-- `mind web ~/agents/keeper --subject me`: the same agent in your browser: what it may do, what waits for your yes, a
-  chat, its schedule. It prints a link with a one-time key and listens on this computer only.
+- `mind web ~/agents/keeper --subject me --backend ollama --model <your model>`: the same agent in your browser: what it
+  may do, what waits for your yes, a chat. It prints a link with a key (new at each start) and listens on this computer only,
+  on port 30701 unless you give `--port`; stop it with `Ctrl-C`. Name `--backend ollama`: without it the chat uses the same
+  default chain as a turn, so a vendor CLI you have installed gets your messages. The page's *schedule* panel reads
+  `triggers.md` in the repository root, not the one in `soul/` that step 8 made, so it shows nothing for this agent; use
+  `mind triggers show` for the schedule. (Checked by driving the page's API with `curl`, not by a person in a browser.)
 - `mind soul apply ~/agents/keeper --subject me`: shows, as a diff, how the soul would be written into the AI CLIs you
   use; nothing is written without `--apply`.
 - Raising what the agent may do on its own, a browser for a task, and the limits of both:
   [README → What to know before you rely on it](../README.md#what-to-know-before-you-rely-on-it). Read it before you
   run `mind autonomy set … 2`, and before any `mind task … --operate 2` or `--detach`.
 - Taking everything back out: `mind erase me --agent ~/agents/keeper --by "me"` is a dry run until you add `--yes`.
+  Know three things first. (1) If `mind memory index` said `vectors not built … Unable to connect` (no Qdrant, as on this
+  page), `erase` **refuses** to run with `Mind wrote vectors for this subject to … and cannot reach it now … Nothing was
+  deleted`, because it cannot tell that nothing was stored; today the way out is to start a Qdrant at that address and run it
+  again. (2) When it does run it removes the soul files, Mind's state, the ledger and proposals, but **not** the notes
+  copied into `memory/imported/` or the agent's directory itself: remove those yourself (`rm -r ~/agents/keeper`), and git
+  history keeps whatever was committed. (3) A subject with nothing indexed can end `erased-with-remainder` (exit 1) because
+  the scaffold `consent/README.md` names the agent; the certificate lists the file.

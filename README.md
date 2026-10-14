@@ -49,7 +49,7 @@
 v0.11.0 on, **[cosign](https://github.com/sigstore/cosign)**. Mind itself is one self-contained binary: no
 runtime to install ([releases](https://github.com/bemindlabs/mind/releases)).
 
-> **v0.11.0 is the first signed release.** `install.sh` holds its tag as the first signed one, so from there on it
+> **v0.11.0 is the first signed release, published as the tag `v0.11.0-alpha`.** `install.sh` holds its tag as the first signed one, so from there on it
 > requires the cosign signature on `SHA256SUMS` and refuses to install without a good one.
 
 ### 1. Get cosign (once)
@@ -60,7 +60,7 @@ cannot verify: a missing cosign, a missing `.sig` or `.pem`, or a signature that
 prerequisite, not an extra. Without it `install.sh` says:
 
 ```
-install.sh: a verified signature is required for v0.11.0 and there is none: cosign is not installed. Not installed.
+install.sh: a verified signature is required for v0.11.0-alpha and there is none: cosign is not installed. Not installed.
 ```
 
 On Linux, without root: download `cosign-linux-amd64` (or `cosign-linux-arm64`) from
@@ -80,35 +80,37 @@ install directory as it was), and then verifies the signature on `SHA256SUMS`. T
 read it, ask for a dry run, then run it.
 
 ```bash
-curl -fsSLO https://github.com/bemindlabs/mind/releases/download/v0.11.0/install.sh
+curl -fsSLO https://github.com/bemindlabs/mind/releases/download/v0.11.0-alpha/install.sh
 sh install.sh --dry-run        # says what it would do and downloads nothing
 sh install.sh
 mind --version                 # ~/.local/bin must be on your PATH
 ```
 
-The dry run prints this (run on a Linux x86_64 machine with the script in this tree; the real run needs the release to
-exist, so what follows it is read from the script, not recorded):
+The release is the tag `v0.11.0-alpha` (a pre-release); a URL that says `v0.11.0` answers 404. The dry run prints
+this (recorded on 2026-10-14 by an automated reviewer on Linux x86_64, with the published script and the install
+directory changed to a scratch one):
 
 ```
-mind v0.11.0 for linux/x64
-  from  https://github.com/bemindlabs/mind/releases/download/v0.11.0
+mind v0.11.0-alpha for linux/x64
+  from  https://github.com/bemindlabs/mind/releases/download/v0.11.0-alpha
   to    ~/.local/bin/mind  (no root needed)
   the signature on SHA256SUMS is required
 Dry run: nothing was downloaded or changed.
 ```
 
-A real run goes on to print `checksum ok (mind-linux-x64)`, `signature ok (cosign, the release workflow)` and
-`installed ~/.local/bin/mind`, and `mind --version` then prints `0.11.0`. The one-line form,
-`curl -fsSL https://github.com/bemindlabs/mind/releases/download/v0.11.0/install.sh | sh`, does the same without the
+followed by a note about a group-writable parent directory (see below). A real run goes on to print
+`checksum ok (mind-linux-x64)`, `signature ok (cosign, the release workflow)` and `installed ~/.local/bin/mind`, took about
+8 seconds there, and `mind --version` then prints `0.11.0` (the binary does not carry the `-alpha` suffix). The one-line form,
+`curl -fsSL https://github.com/bemindlabs/mind/releases/download/v0.11.0-alpha/install.sh | sh`, does the same without the
 reading step. The whole script is one function called on its last line, so a download that is cut short runs nothing.
 
-Settings: `MIND_VERSION=v0.11.0` pins a tag (with none it asks GitHub for the newest release, prereleases included,
+Settings: `MIND_VERSION=v0.11.0-alpha` pins a tag (with none it asks GitHub for the newest release, prereleases included,
 because `releases/latest` answers 404 while every release is marked a prerelease), `MIND_INSTALL_DIR` changes the
 directory, `MIND_REQUIRE_SIGNATURE=1` makes any release, old ones too, need a verified signature, and
 `sh install.sh --uninstall` removes the binary and **never your data** (removing data is `mind erase`, a typed phrase).
 
-What each release carries: every file as `mind-<os>-<arch>`, and a second copy of it under the name releases before
-0.11 use (the same bytes: older binaries ask for that one), and one `SHA256SUMS` for both. What the workflow builds:
+What the v0.11.0-alpha release carries: every binary as `mind-<os>-<arch>`, `install.sh`, an SBOM
+(`mind-sbom.spdx.json`) and one `SHA256SUMS` with its `.sig` and `.pem` (there is no second copy under an older name). What the workflow builds:
 
 | Platform | File |
 |---|---|
@@ -135,7 +137,7 @@ new directories so), run `chmod go-w` on that directory.
 ### By hand, with the signature checked first
 
 ```bash
-V=v0.11.0
+V=v0.11.0-alpha
 B=https://github.com/bemindlabs/mind/releases/download/$V
 curl -LO $B/mind-linux-x64 -LO $B/SHA256SUMS -LO $B/SHA256SUMS.sig -LO $B/SHA256SUMS.pem   # arm64: mind-linux-arm64
 cosign verify-blob --certificate-identity-regexp '^https://github.com/bemindlabs/mind(-dev)?/\.github/workflows/release\.yml@refs/tags/v.*$' \
@@ -193,7 +195,8 @@ It checks the machine, asks what the agent is called, whose it is (a *subject* i
 where its repository goes, what it is for, what it does and declines, and how it addresses you; then it creates
 the repository, writes the soul from your answers, checks it, and runs a first turn. It raises no autonomy,
 turns on no capture and writes into none of your AI CLIs' files — it prints those commands for you instead.
-A slower, followable walk-through with a named small local model, the output to expect and what to do when
+A known problem: at a terminal `mind setup` can print `Done.` and not give the prompt back; press `Ctrl-D` (the agent is
+already made). A slower, followable walk-through with a named small local model, the output to expect and what to do when
 it does not come is in the [quickstart](docs/quickstart.md).
 
 **In your browser** — once an agent exists:
@@ -233,9 +236,9 @@ mind turn ~/agents/keeper --subject me --backend ollama --model <model> \
 | Let it learn what you do | `mind observe enable --subject me` — you type the consent phrase; `mind observe hook --print --subject me` shows the hook to add |
 | Triage proposals (opt-in) | `mind proposal triage --pending …` asks TypeSafe's Jev what kind of action each is, whether it can be undone, whether it touches private data — advisory, it approves nothing; needs `TYPESAFE_API_KEY` (D-059) |
 | Guard what leaves more closely | after the text filter, a model on this machine reads meaning (paraphrase, other scripts); unsure keeps a prompt in (D-061). It is on by itself for `mind a2a send`, for a turn that goes to a cloud backend and for proposal triage, whenever `MIND_OLLAMA_MODEL` names a model that runs on this machine: `OLLAMA_HOST` is a full URL on a loopback address such as `http://127.0.0.1:11434`, and the name does not end `-cloud` or `:cloud` (the local daemon relays those to a hosted service). `MIND_EGRESS_JUDGE=<model>` names a different one and always wins; `MIND_EGRESS_JUDGE=` (empty) turns it off. With none of these the text goes on with the filter alone, and one line on stderr says so, and why, on every send (D-181). The judge reads a text only against the needles you list (`mind egress needles`), so with none listed it does nothing; `mind doctor` and `mind setup` say where it stands. A judge that is configured and does not answer keeps the text in, so an A2A message is not sent. Chat and bots still need `MIND_EGRESS_JUDGE` named and refuse to start without it. The owner has ruled that the judge must be there at beta (D-180); that is not built yet |
-| Print the Thai half too | `MIND_LANG=th` (or a Thai locale such as `LANG=th_TH.UTF-8`); English is the default, and `MIND_LANG=en` wins over a Thai locale |
+| Print the Thai half too | `MIND_LANG=th` (or a Thai locale such as `LANG=th_TH.UTF-8`); English is the default, and `MIND_LANG=en` wins over a Thai locale. Only some commands have a Thai half (checked 2026-10-14: `mind autonomy show` does; `setup`, `doctor`, `backends`, `turn`, `soul check`, `ledger show` and `proposal list` print English only) |
 | Stop everything | `mind stop` |
-| Take a subject back out | `mind erase me --agent ~/agents/keeper --by "me"` (a dry run until `--yes`) |
+| Take a subject back out | `mind erase me --agent ~/agents/keeper --by "me"` (a dry run until `--yes`). It refuses, with nothing deleted, if `mind memory index` ran while no vector store answered (it cannot tell that nothing was stored); it does not remove notes copied into `memory/imported/` or the agent directory, which you remove yourself; see the [quickstart](docs/quickstart.md#where-to-go-next) |
 
 `mind help` lists every command; `mind <command> --help` explains one and does nothing else.
 

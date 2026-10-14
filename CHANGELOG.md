@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed — the quickstart followed as a stranger (GL-04b); install URLs name the real tag
+- **`docs/quickstart.md` and README → Install were followed step by step by an automated reviewer on Linux x86-64 with the published `v0.11.0-alpha` and a local model** (`notes/2026-10-14_quickstart-stranger-run.md`: 50 steps, 35 pass, 7 page fixes, 6 engine bugs listed with reproductions, none fixed here). Page fixes: every install URL and the dry-run sample name `v0.11.0-alpha` (a `v0.11.0` URL answers 404); cosign is in the requirements; the claim of a second copy of each binary under an older name is removed (the release has none); `setup`'s model default, the `Ctrl-D` problem, the two-row ledger, the web console's default port and `--backend ollama`, what `mind erase` refuses and leaves, the Thai half's real coverage, and the time claim are stated as measured. The provenance box says an automated reviewer did this and that no person has yet.
+
 ### Changed - the short prefix of the earlier name is gone from ids and fixtures
 - **Subject ids, temp-dir prefixes and notes now use `mind-` where they used a two-letter prefix** (the real subject id on the owner machine is `mind-bmt`; the soak subject is `mind-soak`; test temp dirs such as `mind-key-`). Tests, `.scrum` notes and one note under `notes/` only: no source code changed, and no signed or hash-pinned fixture contained these ids, so none was regenerated.
 
