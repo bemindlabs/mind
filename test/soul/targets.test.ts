@@ -77,7 +77,7 @@ describe("expandPath", () => {
   test("a linked home file is the file it points to, and one that is another vendor's target is not read twice", async () => {
     const { mkdtemp, mkdir, symlink, writeFile, rm, realpath } = await import("node:fs/promises");
     const { tmpdir } = await import("node:os");
-    const home = await realpath(await mkdtemp(join(tmpdir(), "om-targets-link-")));
+    const home = await realpath(await mkdtemp(join(tmpdir(), "mind-targets-link-")));
     try {
       await mkdir(join(home, ".kimi-code"));
       await mkdir(join(home, "dotfiles"));

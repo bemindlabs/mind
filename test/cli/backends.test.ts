@@ -20,7 +20,7 @@ afterEach(async () => {
 
 describe("mind backends", () => {
   test("prints a row for every backend, local ones included, and exits 0", async () => {
-    const home = await mkdtemp(join(tmpdir(), "om-backends-"));
+    const home = await mkdtemp(join(tmpdir(), "mind-backends-"));
     scratch.push(home);
     const child = Bun.spawn([BUN, "run", BIN, "backends"], {
       cwd: home,

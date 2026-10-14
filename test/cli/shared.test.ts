@@ -405,10 +405,10 @@ describe("lineReader, in process", () => {
 describe("typedPhrase (D-077)", () => {
   test("paste codes, a carriage return, copied quotes and extra spaces are not the phrase; the words are", async () => {
     const { typedPhrase } = await import("../../bin/shared.ts");
-    expect(typedPhrase("\u001b[200~record basis for om-bmt\u001b[201~\r")).toBe("record basis for om-bmt");
-    expect(typedPhrase("  `record basis for om-bmt`  ")).toBe("record basis for om-bmt");
-    expect(typedPhrase("\"record  basis for   om-bmt\"")).toBe("record basis for om-bmt");
-    expect(typedPhrase("record basis for om-bm")).toBe("record basis for om-bm");
+    expect(typedPhrase("\u001b[200~record basis for mind-bmt\u001b[201~\r")).toBe("record basis for mind-bmt");
+    expect(typedPhrase("  `record basis for mind-bmt`  ")).toBe("record basis for mind-bmt");
+    expect(typedPhrase("\"record  basis for   mind-bmt\"")).toBe("record basis for mind-bmt");
+    expect(typedPhrase("record basis for mind-bm")).toBe("record basis for mind-bm");
     expect(typedPhrase("")).toBe("");
   });
 });

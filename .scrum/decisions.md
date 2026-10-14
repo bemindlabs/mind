@@ -1064,13 +1064,13 @@ directory ที่ให้มาถ้ามีไฟล์ใดไฟล์�
 | latency | **27 ms**/ครั้ง ด้วย binary ที่ compile (`bun run` จะ ~200 ms — ไม่ใช้) |
 | ยิงจริงใน session ที่รันอยู่ | sentinel เขียน `22:33:36 PostToolUse fired` โดยไม่ต้อง restart |
 
-**สิ่งที่วาง:** `UserPromptSubmit` · `PostToolUse` · `PostToolUseFailure` (ไม่มี `PreToolUse` — ตามที่ `hook --print` อธิบาย) → `~/.local/bin/mind observe capture --subject om-bmt` timeout 5 ·
+**สิ่งที่วาง:** `UserPromptSubmit` · `PostToolUse` · `PostToolUseFailure` (ไม่มี `PreToolUse` — ตามที่ `hook --print` อธิบาย) → `~/.local/bin/mind observe capture --subject mind-bmt` timeout 5 ·
 binary อยู่ที่ **path คงที่** `~/.local/bin/mind` (copy จาก `dist/`) ไม่ชี้ build artifact โดยตรง — อัปเดตต้อง copy ใหม่โดยตั้งใจ ·
 backup: `~/.claude/settings.json.bak-20260922-223330` · hook เดิม (rtk PreToolUse · บุษบา SessionStart) ไม่ถูกแตะ
 
 **ใครเขียนไฟล์:** บุษบา ในฐานะมือของเจ้าของหลังอนุมัติชัดเจน — **mind เองยังไม่เขียน config ของโปรแกรมอื่น** (หลักเดิมของ `hook --print` ไม่เปลี่ยน)
 
-**ขั้นที่เหลือเป็นของเจ้าของเท่านั้น:** `mind observe enable --subject om-bmt` ที่ terminal (สร้าง observer dir + consent) — จนกว่าจะทำ hook เงียบและไม่เขียนอะไร
+**ขั้นที่เหลือเป็นของเจ้าของเท่านั้น:** `mind observe enable --subject mind-bmt` ที่ terminal (สร้าง observer dir + consent) — จนกว่าจะทำ hook เงียบและไม่เขียนอะไร
 
 **ผลข้างเคียงที่รู้และยอมรับ:** fleet 91 session ที่ไม่ตั้ง `MIND_CAPTURE=off` จะถูกบันทึกด้วย origin `unattended`/`subagent`/`unknown` ตามหลักฐาน — ไม่ปนกับ `owner-prompted` (D-024) · ถ้าอยากตัดออกให้ตั้ง env นั้นที่ launcher ของ fleet
 
@@ -1124,21 +1124,21 @@ backup: `~/.claude/settings.json.bak-20260922-223330` · hook เดิม (rtk 
 
 ---
 
-## D-036 — ปิด `OPEN-1`: fleet ใช้ subject ของตัวเอง ผ่าน `MIND_FLEET=<subject>` · om-bmt รับเฉพาะ session ที่ไม่มีเครื่องหมาย
+## D-036 — ปิด `OPEN-1`: fleet ใช้ subject ของตัวเอง ผ่าน `MIND_FLEET=<subject>` · mind-bmt รับเฉพาะ session ที่ไม่มีเครื่องหมาย
 
 **สถานะ:** เคาะแล้ว (เจ้าของ, 2026-09-23 — เลือก *"Fleet ใช้ subject ของตัวเอง"* จาก 3 ทางใน OPEN-1 · บุษบารับปากทำ audit ไว้จับ launcher ที่ลืมตั้ง)
 
 **กลไก:**
 - launcher ของ fleet ตั้ง env `MIND_FLEET=<subject-id>` (เช่น `fleet-kala`) ไว้กับตัวเอง
 - `observe capture` ที่เห็น env นี้จะ**เปลี่ยนเป้าไปที่ subject นั้นแทน `--subject` ของ hook** · consent ตรวจที่ subject ของ fleet · subject นั้นยังไม่เปิด (ซึ่งเป็นค่าเริ่มต้น) ⇒ **ไม่บันทึกอะไรเลย**
-- ค่าที่ไม่ใช่ subject id ที่ถูกต้อง ⇒ **ไม่บันทึก และไม่ถอยกลับไป `--subject`** · ทิศที่พังต้องเป็นทาง "ไม่เข้า om-bmt" เสมอ
+- ค่าที่ไม่ใช่ subject id ที่ถูกต้อง ⇒ **ไม่บันทึก และไม่ถอยกลับไป `--subject`** · ทิศที่พังต้องเป็นทาง "ไม่เข้า mind-bmt" เสมอ
 - `MIND_CAPTURE=off` ยังใช้ได้เหมือนเดิม และมาก่อน
 
 **ทำไมเป็น env ไม่ใช่ settings ของ fleet เอง:** hooks ของ claude **รวมกัน**จากทุกชั้น settings · launcher ที่ส่ง `--settings` ของตัวเองลบ hook ใน `~/.claude/settings.json` ไม่ได้ · env เป็นสิ่งเดียวที่ launcher คุมได้และ process ลูกของ hook ได้รับแน่นอน
 
 **ทำไมไม่ใช้ `MIND_SUBJECT`:** ชื่อนั้นมีความหมายอยู่แล้ว = "process นี้รันอยู่ใต้ `cli-exec` ของ mind" (guard hook ปฏิเสธ push ด้วยมัน) · สองความหมายในชื่อเดียวคือบั๊กที่รอเกิด
 
-**สิ่งที่ไม่แตะ:** `CAPTURE_FIELDS`/schema ของ record ไม่เปลี่ยน ⇒ **consent เดิมยังใช้ได้ ไม่ต้อง re-enable** · `deriveOrigin` ไม่เปลี่ยน — record ใน om-bmt ยังเป็น `origin=unknown` ตามหลักฐาน
+**สิ่งที่ไม่แตะ:** `CAPTURE_FIELDS`/schema ของ record ไม่เปลี่ยน ⇒ **consent เดิมยังใช้ได้ ไม่ต้อง re-enable** · `deriveOrigin` ไม่เปลี่ยน — record ใน mind-bmt ยังเป็น `origin=unknown` ตามหลักฐาน
 
 **`S3.2 AC3` ตอบที่ไหน:** ที่**ขอบของ subject** ไม่ใช่ที่ label `origin` · "ไม่มีเครื่องหมาย" ไม่ถูกยกเป็น `owner-prompted` (กับดักเดียวกับ D-024) — มันแค่หมายความว่า "ไม่ใช่ fleet ที่ประกาศตัว" ·
 ความเปราะที่เหลือ (launcher ที่ลืมตั้ง) จับด้วย **audit อ่านอย่างเดียว** ที่จัดกลุ่ม session ใน subject ตาม project และชี้ session ที่หน้าตาเหมือนงานอัตโนมัติ — ชี้ให้คนดู ไม่แก้ label ให้เอง
@@ -1146,12 +1146,12 @@ backup: `~/.claude/settings.json.bak-20260922-223330` · hook เดิม (rtk 
 **ขั้นที่กระทบระบบนอก repo (ต้องยืนยันกับเจ้าของทีละครั้ง):** ใส่ env ใน launcher ของ fleet — systemd `*-worker.service` · `bwocd-*` · สคริปต์ใน `~/bwoc/agents/*/ops/`
 
 **ติดตั้งจริง 2026-09-23 12:35:** `fleet-kaew` · `fleet-kala` · `fleet-mali` · `fleet-pan` ผ่าน systemd drop-in `/etc/systemd/system/<a>-worker.service.d/mind-fleet.conf` (เจ้าของรัน sudo เอง · ตรวจแล้วว่าอยู่ใน `/proc/<pid>/environ` ของ worker ทั้ง 4 ตัว) · `news-brief.sh` → `fleet-news-brief` · binary ใหม่ที่ `~/.local/bin/mind` ·
-**ยังไม่ครอบ:** tmux session ที่ `bwocd` สร้าง · record เก่าใน om-bmt (30 รายการที่ cwd `~` ตอบไม่ได้ว่าเป็นของใคร)
+**ยังไม่ครอบ:** tmux session ที่ `bwocd` สร้าง · record เก่าใน mind-bmt (30 รายการที่ cwd `~` ตอบไม่ได้ว่าเป็นของใคร)
 
 **ต่อ (เจ้าของเคาะ 2026-09-23):**
 - *"ติด env ที่ bwocd ทั้งสองตัว"* — session ที่ `bwocd` เปิด (`bwoc chat`/`spawn`) นับเป็น fleet **รวมที่เจ้าของพิมพ์เองผ่านมัน** · drop-in `fleet-bwocd-busaba` · `fleet-bwocd-kla` (เจ้าของรัน sudo)
-- *"purge om-bmt ทั้งหมด เริ่มใหม่สะอาด"* — ลบรายชิ้นไม่ได้ (`observe purge` ทั้ง subject เท่านั้น) · เจ้าของรัน `purge` แล้ว `enable` ใหม่ที่ terminal เอง ⇒ ทุก record หลังจากนี้เกิดใต้ D-036
-- **ตรวจแล้ว 2026-09-23 12:47:** bwocd ทั้งสองมี env ใน `/proc/<pid>/environ` · ตอบ :10133/:10132 (401 = ขึ้นปกติ ต้อง sign) · om-bmt purge แล้ว เปิดใหม่ `05:46:59Z` · `observe leaks` ที่ `/` `~` `~/bwoc` = 0 ทั้งหมด
+- *"purge mind-bmt ทั้งหมด เริ่มใหม่สะอาด"* — ลบรายชิ้นไม่ได้ (`observe purge` ทั้ง subject เท่านั้น) · เจ้าของรัน `purge` แล้ว `enable` ใหม่ที่ terminal เอง ⇒ ทุก record หลังจากนี้เกิดใต้ D-036
+- **ตรวจแล้ว 2026-09-23 12:47:** bwocd ทั้งสองมี env ใน `/proc/<pid>/environ` · ตอบ :10133/:10132 (401 = ขึ้นปกติ ต้อง sign) · mind-bmt purge แล้ว เปิดใหม่ `05:46:59Z` · `observe leaks` ที่ `/` `~` `~/bwoc` = 0 ทั้งหมด
 
 ---
 
@@ -1427,7 +1427,7 @@ audit log กลางจะเป็นที่ที่เก้าที่ 
 
 **สถานะ:** เจ้าของเคาะ (2026-09-23 — *"สอน scanner รู้จักตัวยึด"*)
 
-**ที่มา:** memory ของเจ้าของ 4 ไฟล์ถูกกันไม่ให้เข้า om-bmt (S4.2) เพราะดูเหมือนมี credential แต่พอตรวจทีละบรรทัด ทั้ง 4 เป็นตัวยึดทั้งหมด: `postgres://…:<pw>@` · `mqtt://bwoc:***@` · `{{token:NAME}}` · `token: ~/.secrets/.env.telegram` ·
+**ที่มา:** memory ของเจ้าของ 4 ไฟล์ถูกกันไม่ให้เข้า mind-bmt (S4.2) เพราะดูเหมือนมี credential แต่พอตรวจทีละบรรทัด ทั้ง 4 เป็นตัวยึดทั้งหมด: `postgres://…:<pw>@` · `mqtt://bwoc:***@` · `{{token:NAME}}` · `token: ~/.secrets/.env.telegram` ·
 บันทึกเรื่องระบบมักบอกว่า*ความลับอยู่ที่ไหน* มากกว่าจะเก็บตัวความลับเอง ถ้า scan บล็อกบรรทัดแบบนี้ คนจะเลิกจดว่าความลับอยู่ที่ไหน
 
 **คำตัดสิน:** `url-credentials` และ `assigned-secret` ได้ `confirm` = *ไม่ใช่ตัวยึด* (`isPlaceholder` ใน `src/guard/scan.ts`) · ยอมรับเฉพาะรูปที่ไม่มีความลับที่ generate ขึ้นมาหน้าตาแบบนั้น: `<…>` ทั้งค่า · `*` ล้วน ≥3 ตัว · `${…}` · `$UPPER` · `{{…}}` (รวมกรณี match เริ่มกลางแท็ก) · path ที่ขึ้นต้นด้วย `~/` หรือ `/` และมี ≥2 ส่วน ·
@@ -1831,11 +1831,11 @@ release แรกบน public ติดป้าย **`v0.3.0-alpha` · pre-rel
 - **AC1:** record เก็บ `basis` (owner / consent / contract / legitimate-interest / legal-obligation ตามฐานของ PDPA/GDPR ที่ใช้กับงานนี้ได้), `approvedBy`, `at`, `uses` (memory / persona / fine-tune), `expires` (YYYY-MM-DD หรือ never), `note`, `revokedAt` · ไฟล์อยู่ที่ `state/basis/<subject>/records.json` (600) · `erase` ลบทั้งหมด (data map นับ 11 tree)
 - **AC2 (บังคับในโค้ด):** `memory ingest` และ `persona extract` เรียก `basisFor` **ก่อนอ่านไฟล์ใด ๆ** · ถ้าไม่มี record, หมดอายุแล้ว, ถูก revoke หรือไม่ได้ระบุ use นั้น จะ exit 1 พร้อมบอกเหตุผลและคำสั่งที่ใช้แก้ · ไม่มีไฟล์ไหนถูกอ่านเลย และไม่มีโมเดลไหนถูกเรียก (มีเทสต์ครอบทุกกรณี)
 - **AC3:** use ต้องตรงกันเป๊ะ ฐานที่ให้แค่ `memory` เอาไปใช้กับ `persona` ไม่ได้ · มี `fine-tune` ไว้ให้ปฏิเสธได้ แม้ตอนนี้จะไม่มีอะไรเทรน (D-076)
-- **AC4:** ข้อมูลของเจ้าของเองก็ต้องมี record ด้วยฐาน `owner` ผ่านคำสั่งเดียวกัน ไม่มีทางลัด · **ผลต่อเครื่องนี้:** tonkla-agi (`om-bmt`) ต้องมี record ก่อนจะ ingest หรือ extract รอบหน้า · ข้อมูลที่เข้ามาก่อนหน้านี้ยังอยู่ (S7.3 คุมเฉพาะสิ่งที่จะเข้ามาต่อไป)
+- **AC4:** ข้อมูลของเจ้าของเองก็ต้องมี record ด้วยฐาน `owner` ผ่านคำสั่งเดียวกัน ไม่มีทางลัด · **ผลต่อเครื่องนี้:** tonkla-agi (`mind-bmt`) ต้องมี record ก่อนจะ ingest หรือ extract รอบหน้า · ข้อมูลที่เข้ามาก่อนหน้านี้ยังอยู่ (S7.3 คุมเฉพาะสิ่งที่จะเข้ามาต่อไป)
 - `basis record` ต้องพิมพ์วลี `record basis for <subject>` ที่ terminal เหมือนการ allow peer หรือ chat user · agent จะให้ฐานกับตัวเองไม่ได้ · `revoke` ทำได้โดยไม่ต้องพิมพ์วลี เพราะเป็นการลดขอบเขต · `show` แสดงสถานะ active / expired / revoked
 - record บอกแค่ว่าใครตัดสินใจอะไร **ไม่ได้รับรองว่าถูกกฎหมาย** ความรับผิดชอบนั้นเป็นของผู้อนุมัติ ซึ่ง record ระบุชื่อไว้
 - `memory ingest` เดิมไม่มี `--subject` จึงอ่าน subject จาก soul ในโฟลเดอร์ agent (`soulSubject`) · ถ้าไม่มี soul จะไม่อ่านอะไร
-- **ระหว่างทาง:** control 1 ของ parity จับได้ว่าเทสต์ `eval --recall-only` สร้าง collection ไว้ใน Qdrant จริงของเครื่อง · แก้เทสต์ให้ชี้ Qdrant ไปที่ port ที่ไม่มีอะไรฟัง · collection นั้นถูกลบไปแล้วตั้งแต่ตอนรัน parity และ collection จริงของ `om-bmt` ไม่ได้ถูกแตะ
+- **ระหว่างทาง:** control 1 ของ parity จับได้ว่าเทสต์ `eval --recall-only` สร้าง collection ไว้ใน Qdrant จริงของเครื่อง · แก้เทสต์ให้ชี้ Qdrant ไปที่ port ที่ไม่มีอะไรฟัง · collection นั้นถูกลบไปแล้วตั้งแต่ตอนรัน parity และ collection จริงของ `mind-bmt` ไม่ได้ถูกแตะ
 
 ---
 
@@ -1901,7 +1901,7 @@ release แรกบน public ติดป้าย **`v0.3.0-alpha` · pre-rel
 - **ภาพ:** วาดบน canvas เอง ไม่ใช้ library (CSP ไม่ให้โหลดจาก CDN และหน้าเว็บต้องอยู่ใน binary) · ใช้ force layout 3D: แรงผลักระหว่างทุกคู่ แรงสปริงตาม synapse และแรงดึงเข้ากลาง · สปริงของ hub อ่อนลงตาม √degree ไม่งั้นไฟล์ index ที่ link ทุกไฟล์จะดึงทั้งแผนที่เข้าไปกองกันเป็นก้อน · scale ใช้ระยะที่ percentile 90 ไม่ใช่ระยะไกลสุด เพื่อไม่ให้จุดที่หลุดออกไปทำให้ทั้งกราฟเล็ก · perspective, จุดใหญ่ตาม degree, สีตามชนิดของ memory, มีสัญญาณวิ่งไปตาม synapse
 - **ใช้งาน:** ลากเพื่อหมุน · scroll เพื่อ zoom · ชี้ที่จุดจะแสดงชื่อ ชนิด และจำนวน link พร้อมไฮไลต์เพื่อนบ้าน · คลิกจุดจะเปิดไฟล์นั้นในช่อง Read · filter/kind ที่มีอยู่จะทำให้จุดที่ไม่ตรงจางลง · มีปุ่ม Spin / Reset view / Hide map (จำค่าไว้ใน browser)
 - **ใช้ทรัพยากรเท่าที่จำเป็น:** หยุดวาดเมื่อแท็บถูกซ่อน, map ถูกปิด หรือหน้าเว็บไม่ได้อยู่บนจอ · ถ้าตั้ง `prefers-reduced-motion` จะไม่หมุน ไม่มีสัญญาณวิ่ง และคำนวณ layout ให้นิ่งก่อนแสดง
-- **ข้อมูลจริง (om-bmt):** 79 neurons · 219 synapses · 3 ไฟล์ไม่มี link · 10 broken links
+- **ข้อมูลจริง (mind-bmt):** 79 neurons · 219 synapses · 3 ไฟล์ไม่มี link · 10 broken links
 
 ## D-083 — ฟอนต์หน้าเว็บ: Electrolize สำหรับอังกฤษ · IBM Plex Sans Thai สำหรับไทย · ฝังไว้ใน binary
 
@@ -3057,7 +3057,7 @@ release แรกบน public ติดป้าย **`v0.3.0-alpha` · pre-rel
 
 ---
 
-## D-164 — Always-on: tonkla-agi (om-bmt) ทำงานได้ 24/7 · AO-1..AO-11
+## D-164 — Always-on: tonkla-agi (mind-bmt) ทำงานได้ 24/7 · AO-1..AO-11
 
 **สถานะ:** เจ้าของเคาะ (2026-10-06 — AO-1..AO-11 ทุกข้อ · ตรงกับคำแนะนำของแผน ยกเว้น AO-5 ที่เลือก C) · ต่อจาก D-054, D-154, D-158, D-022, D-048, D-130 · ที่มา: แผน always-on (อ่านที่ `1f98a29`, v0.10.1) · งานใน backlog: **E18** (S18.1–S18.16, P0–P7)
 
@@ -3086,7 +3086,7 @@ release แรกบน public ติดป้าย **`v0.3.0-alpha` · pre-rel
 - **E18 เพิ่ม:** สถานะ `queued` และ `parked` · `tasks tick|status|pause|resume-all|schedule` · `--queue`, `--budget-usd`, `deadlineHours` (ค่าเริ่ม 24 ชม. นับเวลา park) · `maxRunning` 2 / `maxBrowser` 1 / trigger 1 · guard: vLLM ตื่น (mind **ไม่เรียก** `/sleep` `/wake_up` เอง), VRAM ≥4 GB, ดิสก์ ≥20 GB · digest รายวันที่ **ไม่ใช้ model turn** · alert ไม่มีเนื้อหา
 - **ผลของ AO-5 ต่อแผน:** S18.6 เหลือแค่ pause/resume-all (ไม่มีเพดานรายวัน, ไม่มี reset เที่ยงคืน) · strip และ digest แสดงยอดใช้ แต่ไม่มี "เทียบเพดาน" · alert "daily cap hit" ไม่มี
 
-**ลำดับ:** P0–P3 (S18.1–S18.8, ~15 แต้ม) เริ่มได้เลยขนานกับ E19 · P5 และ operate 2 ของ P6 รอ E19 (D-163) · P4 Telegram รอ bot ของเจ้าของ (AO-10) · soak 72 ชม. บน subject `om-soak` ไม่ใช่ om-bmt
+**ลำดับ:** P0–P3 (S18.1–S18.8, ~15 แต้ม) เริ่มได้เลยขนานกับ E19 · P5 และ operate 2 ของ P6 รอ E19 (D-163) · P4 Telegram รอ bot ของเจ้าของ (AO-10) · soak 72 ชม. บน subject `mind-soak` ไม่ใช่ mind-bmt
 
 ---
 

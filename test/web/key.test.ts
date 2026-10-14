@@ -45,7 +45,7 @@ describe("changing the key (S14.2 AC3)", () => {
   });
 
   test("replaced whole at 600, nothing left beside it, and loaded back as the same key", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "om-key-"));
+    const dir = await mkdtemp(join(tmpdir(), "mind-key-"));
     scratch.push(dir);
     const path = join(dir, "web.key");
     const first = await loadOrCreateKey(path);
@@ -59,7 +59,7 @@ describe("changing the key (S14.2 AC3)", () => {
   });
 
   test("refuses what is not a key; a failed write leaves the old file and no stray one", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "om-key-"));
+    const dir = await mkdtemp(join(tmpdir(), "mind-key-"));
     scratch.push(dir);
     const path = join(dir, "web.key");
     await loadOrCreateKey(path);

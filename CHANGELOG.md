@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed - the short prefix of the earlier name is gone from ids and fixtures
+- **Subject ids, temp-dir prefixes and notes now use `mind-` where they used a two-letter prefix** (the real subject id on the owner machine is `mind-bmt`; the soak subject is `mind-soak`; test temp dirs such as `mind-key-`). Tests, `.scrum` notes and one note under `notes/` only: no source code changed, and no signed or hash-pinned fixture contained these ids, so none was regenerated.
+
 ### Changed — owner rulings of 14 October: MindHub profiles, badge and owner-approved posts are in 1.0.0 (D-186)
 - **D-186 records eight owner rulings of 2026-10-14:** MindHub agent profiles, the verified badge and owner-approved posts are in 1.0.0 (comments, follow and search start in beta and are stable in 1.0.0; debates, reputation, moderation at scale and the money marketplace stay 1.x); MindHub e-mails say MindHub; the admin account exists and sign-up is by invitation only; `/pricing` stays unindexed until the plans are on sale; the older internal ids are kept for now; the GitHub Support request about the old pull-request ref is the owner's to file; the build Mac's orchestrator SSH key was removed. Its open list is kept in the entry. README stages, MindHub table and counts, and backlog E20 (S20.1 to S20.3 stage 1.0.0, S20.7 still 1.x) follow; the stale README line is fixed: the redirect from the old market address is live (301 since 14 October). Text only: no code changed.
 

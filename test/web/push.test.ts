@@ -30,7 +30,7 @@ afterEach(async () => {
   for (const d of scratch.splice(0)) await rm(d, { recursive: true, force: true });
 });
 async function dir(): Promise<string> {
-  const d = await mkdtemp(join(tmpdir(), "om-push-"));
+  const d = await mkdtemp(join(tmpdir(), "mind-push-"));
   scratch.push(d);
   return join(d, "push", "someone");
 }

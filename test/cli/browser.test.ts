@@ -38,7 +38,7 @@ esac
 `;
 
 async function harness() {
-  const home = await mkdtemp(join(tmpdir(), "om-browser-cli-"));
+  const home = await mkdtemp(join(tmpdir(), "mind-browser-cli-"));
   scratch.push(home);
   const bin = join(home, "bin");
   const dockerDir = join(home, "docker");

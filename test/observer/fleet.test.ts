@@ -39,11 +39,11 @@ function record(project: string, key: string): CaptureRecord {
 
 describe("captureTarget", () => {
   test("no marker: the hook's own subject", () => {
-    expect(captureTarget("om-bmt", {})).toEqual({ ok: true, subject: subjectId("om-bmt"), fleet: false });
+    expect(captureTarget("mind-bmt", {})).toEqual({ ok: true, subject: subjectId("mind-bmt"), fleet: false });
   });
 
   test("a marker outranks the hook's subject", () => {
-    expect(captureTarget("om-bmt", { [FLEET_ENV]: "fleet-kala" })).toEqual({
+    expect(captureTarget("mind-bmt", { [FLEET_ENV]: "fleet-kala" })).toEqual({
       ok: true,
       subject: subjectId("fleet-kala"),
       fleet: true,
@@ -52,7 +52,7 @@ describe("captureTarget", () => {
 
   test("a marker that is not a subject id records nothing — never the hook's subject", () => {
     for (const marker of ["", "..", "a/b", "Upper Case"]) {
-      const target = captureTarget("om-bmt", { [FLEET_ENV]: marker });
+      const target = captureTarget("mind-bmt", { [FLEET_ENV]: marker });
       expect(target.ok, marker).toBe(false);
       if (!target.ok) expect(target.reason, marker).toContain(FLEET_ENV);
     }

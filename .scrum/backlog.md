@@ -341,7 +341,7 @@ E16 + E15 (ตลาดงาน ไม่มีเงิน) ──> E20 MindHu
   การสกัด "เจ้าของยืนยันแล้ว" จากร้อยแก้วเป็นคนละงานและยากกว่ามาก — และคือวิธีที่ extractor จะได้ 60% บนเกณฑ์ที่ต้องการ 80%
 - AC2: แต่ละ action มี เวลา · โปรเจกต์ · ชนิด · เป้าหมาย · สำเร็จ/ล้มเหลว
 - AC3 (**ถอนจาก transcript · ย้ายไป capture hook · D-024**): แยก **สิ่งที่เจ้าของสั่ง** ออกจาก **สิ่งที่ AI เสนอเอง**
-  🔸 **ตอบที่ขอบ subject แทน label (D-036 · 2026-09-23)** — `source` ไม่มาจาก claude 2.1.280 · fleet ประกาศตัวด้วย `MIND_FLEET=<subject>` แล้ว capture ย้ายไป subject นั้น (`src/observer/fleet.ts:captureTarget`) · launcher ที่ลืมจับด้วย `mind observe leaks` · **ยังไม่ติ๊ก**: launcher จริงยังไม่ได้ใส่ env และ record เก่าใน om-bmt ยังปนอยู่จนกว่าจะ purge
+  🔸 **ตอบที่ขอบ subject แทน label (D-036 · 2026-09-23)** — `source` ไม่มาจาก claude 2.1.280 · fleet ประกาศตัวด้วย `MIND_FLEET=<subject>` แล้ว capture ย้ายไป subject นั้น (`src/observer/fleet.ts:captureTarget`) · launcher ที่ลืมจับด้วย `mind observe leaks` · **ยังไม่ติ๊ก**: launcher จริงยังไม่ได้ใส่ env และ record เก่าใน mind-bmt ยังปนอยู่จนกว่าจะ purge
   ⛔ **ตอบจากไฟล์ transcript ไม่ได้** — ข้อมูลนี้ไม่มีอยู่ในนั้น สิ่งเดียวที่แยกได้เชิงโครงสร้างคือ
   "session นี้มีคนพิมพ์ไหม" ซึ่งตัด **44% ของ session claude และ 80% ของ grok** ออก (นั่นคืองานของ fleet ไม่ใช่พฤติกรรมเจ้าของ)
   ⇒ hook ต้องบันทึกตอนเกิดเหตุ ไม่งั้น E3 จะเรียนนิสัยของ AI แทนของคน ซึ่งเป็นสิ่งที่ AC นี้มีไว้กันพอดี
@@ -376,7 +376,7 @@ E16 + E15 (ตลาดงาน ไม่มีเงิน) ──> E20 MindHu
 
 **S3.3** — *รู้ว่าเจ้าของทำอะไรเป็นกิจวัตร เพื่อเสนอให้ทำให้* (AC เขียนก่อนเทสต์ · D-057 · 2026-09-24)
 - AC1: ขุดจาก action ใน subject ของเจ้าของ **ยกเว้นที่มีหลักฐานว่าไม่ใช่เจ้าของ** (`unattended` · `subagent`) · งานของ fleet ถูกแยกไปอยู่อีก subject แล้ว (D-036) · นับแค่ `command` กับ `file-edit` ·
-  ⚠ **แก้ระหว่างเขียนโค้ด 2026-09-24:** ร่างแรกนับแค่ `owner-prompted` แต่วัดบน om-bmt จริงแล้ว **ได้ 0 จาก 2,026 แถว** (unknown 1,958 · subagent 68) เพราะ claude 2.1.280 ไม่ส่งช่องที่บอกว่าใครเป็นคนสั่ง ⇒ ทำตาม D-036 ที่แยกด้วย subject ไม่ใช่ด้วยป้าย
+  ⚠ **แก้ระหว่างเขียนโค้ด 2026-09-24:** ร่างแรกนับแค่ `owner-prompted` แต่วัดบน mind-bmt จริงแล้ว **ได้ 0 จาก 2,026 แถว** (unknown 1,958 · subagent 68) เพราะ claude 2.1.280 ไม่ส่งช่องที่บอกว่าใครเป็นคนสั่ง ⇒ ทำตาม D-036 ที่แยกด้วย subject ไม่ใช่ด้วยป้าย
 - AC2: **กิจวัตร** = action เดียวกันในโปรเจกต์เดียวกัน เกิดใน **≥ 3 วันที่ต่างกัน** · บอกช่วงเวลา (หน้าต่าง 2 ชั่วโมง ตามเวลาเครื่อง พร้อมระบุ timezone) **เฉพาะเมื่อ ≥ 60%** ของวันเหล่านั้นตกในหน้าต่างเดียวกัน ไม่งั้นจะไม่บอกเวลา
 - AC3: **ลำดับ** = A ตามด้วย B ใน session เดียวกัน ภายใน 10 นาที · เกิด **≥ 5 ครั้ง ใน ≥ 2 วัน** · P(B|A) **≥ 0.6**
 - AC4: ทุก pattern แสดงหลักฐาน (จำนวนครั้ง · จำนวนวัน · วันแรก/วันล่าสุด · สัดส่วน) · **ไม่เก็บเป็นไฟล์** คำนวณใหม่ทุกครั้งที่ถาม · ผลเป็น `Personal` ส่งออกได้แค่ terminal · มีแค่ `bin/commands/observe.ts` ที่ import miner ได้ (มีเทสต์คุม) · ประตู `Personal` มี 3 ไฟล์ (D-057)
@@ -429,7 +429,7 @@ E16 + E15 (ตลาดงาน ไม่มีเงิน) ──> E20 MindHu
 - ✅ `mind memory ingest <agent> --from <dir>` — `*.md` ชั้นบนสุด → `memory/imported/<name>/` · mirror · plan ก่อน เขียนเมื่อ `--yes` · ไม่ commit
 - ✅ ผ่าน `scanStaged` ของ repo guard ก่อน — **dry-run บน `~/.claude/projects/-home-bmt/memory` จริง: 73 ผ่าน · 4 ถูกกัน** (credential ใน URL 2 · ค่า secret 2) · ค่าไม่ถูกพิมพ์
 - ✅ action เข้า recall เฉพาะ `actions/summary.json` เป็นร้อยแก้ว — คีย์นอก vocabulary ของ mind ถูกทิ้ง (เทสต์ใส่ path ด้วยมือแล้วต้องไม่หลุด)
-- ✅ **นำเข้าจริง 2026-09-23** (เจ้าของเลือก *"สร้าง repo om-bmt บน host"*) — repo `lab` ของ subject `om-bmt` ถูก copy ออกจากกล่องมาที่ `workspaces/mind/agents/om-bmt/`
+- ✅ **นำเข้าจริง 2026-09-23** (เจ้าของเลือก *"สร้าง repo mind-bmt บน host"*) — repo `lab` ของ subject `mind-bmt` ถูก copy ออกจากกล่องมาที่ `workspaces/mind/agents/mind-bmt/`
   (ตัวตนเดิม ไม่ใช่ `mind new` ตัวที่สอง) · 73 ไฟล์เข้า `memory/imported/owner/` · สแกนซ้ำหลังเขียน **0 finding** ·
   `memory index` → **74 ไฟล์ · 246 ชิ้น** · FTS + `mind__om-bmt` · ลองค้น 3 คำถามจริง ได้ไฟล์ที่ถูกเรื่องเป็นอันดับแรกทุกข้อ
   ⚠ **ยังไม่ commit** (เป็นของเจ้าของ) · สำเนาในกล่อง `/agent/lab` เก่ากว่า host แล้ว · 4 ไฟล์ที่ถูกกันยังมี credential อยู่ใน `~/.claude/projects/-home-bmt/memory` (ซึ่ง Claude อ่านเข้า context อยู่แล้ว)
@@ -887,7 +887,7 @@ E16 + E15 (ตลาดงาน ไม่มีเงิน) ──> E20 MindHu
 
 > เจ้าของเคาะ 2026-10-06 (D-164) · ที่มา: แผน always-on ที่ `1f98a29` (v0.10.1) · **supervisor = oneshot tick ทุก 1 นาที + unit ต่อ task (AO-1, ยังถือ D-054 ไม่มี daemon)**
 > **ไม่มีเพดานรายวัน (AO-5)** — งบต่อ task (turn · นาที · token · USD) · wall-clock deadline · `mind stop` และ `tasks pause` ยังอยู่ · ไม่มีคนเฝ้า = claude-local เท่านั้น ไม่มี fallback ไป cloud (AO-11)
-> **กฎของทั้ง epic (D-149):** AC ที่เขียน **e2e** รันบน claude-local จริง · soak ใช้ subject `om-soak` ไม่ใช่ om-bmt
+> **กฎของทั้ง epic (D-149):** AC ที่เขียน **e2e** รันบน claude-local จริง · soak ใช้ subject `mind-soak` ไม่ใช่ mind-bmt
 > **🔒 E19** = ต้องรอ warden ของ D-163 (Q4-B) · ไม่มีเครื่องหมาย = เริ่มได้เลย · P0–P3 (~15 แต้ม) ทำขนานกับ E19 ได้
 
 | เฟส | Story | รอ Q4-B (E19)? | ใช้ได้เองเพราะ |
@@ -1144,10 +1144,10 @@ E16 + E15 (ตลาดงาน ไม่มีเงิน) ──> E20 MindHu
 | อะไร | ทำที่ไหน |
 |---|---|
 | S6.1 AC4 — ตอบ y/n persona draft (sub-agent ตอบแทนไม่นับ) | เว็บ → Profile |
-| S6.5 AC1 — ตรวจชุดงาน 24 ข้อ + คำตอบที่คาดไว้ | `agents/om-bmt/evals.md` |
+| S6.5 AC1 — ตรวจชุดงาน 24 ข้อ + คำตอบที่คาดไว้ | `agents/mind-bmt/evals.md` |
 | S3.3 AC6 — ตัดสินว่า 5 pattern แรกเป็นของจริง | `mind observe patterns` เมื่อ capture สะสมพอ |
 | S11.7 AC4 — distill บน knowledge จริง ตอบ ≥20 ข้อ | เว็บ → Memories → Facts to confirm |
-| commit memory ของ om-bmt เข้า git | repo ของ agent |
+| commit memory ของ mind-bmt เข้า git | repo ของ agent |
 | E14 — บัญชี Apple Developer · Google Play Console · นิติบุคคล · ราคา · สัญญา PDPA/GDPR | ก่อน S14.4/S14.7 |
 | E13 — บัญชี Hostinger/GCP/AWS และสิทธิ์ของ CLI | ก่อน S13.2–S13.4 |
 | E15 — payment provider แบบ marketplace/escrow · นิติบุคคล · ภาษี · ข้อตกลงและกระบวนการข้อพิพาท | ก่อน S15.6 |

@@ -108,7 +108,7 @@ describe("LiteLLM key source", () => {
   });
 
   test("readLiteLLMKey: the virtual key, or why not — a missing file is told apart for doctor", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "om-litellm-key-"));
+    const dir = await mkdtemp(join(tmpdir(), "mind-litellm-key-"));
     try {
       const at = (name: string) => join(dir, name);
       await writeFile(at("ok"), "LITELLM_API_KEY=virtual\n");

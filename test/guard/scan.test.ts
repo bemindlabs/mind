@@ -105,7 +105,7 @@ describe("what the scan refuses by what is in a file (AC3)", () => {
   });
 
   test("a stand-in for a secret is not a secret", () => {
-    // The four lines that kept the owner's notes out of om-bmt, reshaped.
+    // The four lines that kept the owner's notes out of mind-bmt, reshaped.
     expect(rules("a.md", "DATABASE_URL = `postgresql://app:<pw>@10.0.0.1:5432/db`\n")).toEqual([]);
     expect(rules("a.md", "reads `mqtt://bwoc:***@mosquitto:1883`\n")).toEqual([]);
     expect(rules("a.md", "template holds `{{token:NAME}}` lines\n")).toEqual([]);
