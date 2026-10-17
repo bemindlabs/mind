@@ -64,7 +64,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: mkdir -p dist && bun build bin/mind.ts --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --outfile dist/mind-${{ matrix.platform }}
       - run: ./dist/mind-${{ matrix.platform }} --version
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mind-${{ matrix.platform }}
           path: dist/mind-${{ matrix.platform }}
@@ -85,7 +85,7 @@ jobs:
           output-file: mind-sbom.spdx.json
           upload-artifact: false
           upload-release-assets: false
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sbom
           path: mind-sbom.spdx.json
@@ -104,7 +104,7 @@ jobs:
           merge-multiple: true
       - run: cp install.sh dist/install.sh
       - run: sh scripts/release-assets.sh dist
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-files
           path: dist/*
@@ -128,7 +128,7 @@ jobs:
       - name: Sign SHA256SUMS (keyless, this workflow's identity)
         working-directory: dist
         run: cosign sign-blob --yes --output-signature SHA256SUMS.sig --output-certificate SHA256SUMS.pem SHA256SUMS
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: signature
           path: |
