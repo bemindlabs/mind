@@ -52,7 +52,7 @@ export function tail(stderr: string, lines = 3): string {
 }
 
 /** What `turn --json` printed, read for a step. A stdout that is not JSON is a turn with no answer. */
-export function readTurnJson(stdout: string): { readonly text: string; readonly turnId: string | null; readonly backend: string | null; readonly tokens: number | null; readonly why?: string } {
+export function readTurnJson(stdout: string): { readonly text: string; readonly turnId: string | null; readonly backend: string | null; readonly model?: string | null; readonly tokens: number | null; readonly why?: string } {
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(stdout) as Record<string, unknown>;
@@ -70,6 +70,7 @@ export function readTurnJson(stdout: string): { readonly text: string; readonly 
     text: typeof parsed["text"] === "string" ? parsed["text"] : "",
     turnId: typeof parsed["turn"] === "string" ? parsed["turn"] : null,
     backend: typeof parsed["backend"] === "string" ? parsed["backend"] : null,
+    model: typeof parsed["model"] === "string" && parsed["model"] !== "" ? parsed["model"] : null,
     tokens: input === null && output === null ? null : (input ?? 0) + (output ?? 0),
   };
 }

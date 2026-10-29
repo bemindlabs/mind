@@ -233,8 +233,25 @@ describe("B. policy — the argv allowlist", () => {
       "cat-file",
       "rev-list",
       "config",
+      "hash-object",
+      "read-tree",
+      "update-index",
+      "write-tree",
+      "commit-tree",
+      "update-ref",
+      "worktree",
     ]);
     for (const verb of NETWORK_VERBS) expect(GIT_VERBS).not.toContain(verb);
+  });
+
+  test("git worktree is allowed to add and nothing else (S22.8 AC3)", () => {
+    expect(refusal(["git", "worktree", "add", "/w/x", "-b", "feat/t-00000001", "main"])).toBeUndefined();
+    for (const form of ["remove", "prune", "move", "lock", "unlock", "repair", "list"]) {
+      expect(refusal(["git", "worktree", form]), form).toContain("git worktree may only add");
+    }
+    expect(refusal(["git", "worktree"])).toContain("git worktree may only add");
+    // And the options in front of the verb stay refused, `-C` and `-c` included.
+    expect(refusal(["git", "-C", "/r", "worktree", "add", "/w"])).toBeDefined();
   });
 
   test("the fence helper is not a way around the list (D-118)", () => {
@@ -508,6 +525,14 @@ describe("C. behaviour — every command, watched by a git that writes down its 
       // D-154's: reading a subject's tasks (none here), and one that does not exist; neither starts a turn.
       ["task", "list", join(agent, "soul"), "--subject", SUBJECT],
       ["task", "show", "t-11111111", join(agent, "soul"), "--subject", SUBJECT],
+      // S22.5's: reads one file and runs no git.
+      ["fleet", "check", join(agent, "no-such-fleet.toml")],
+      // S22.11's: `list` reads a directory and runs no git.
+      ["grant", "list", join(agent, "soul"), "--subject", SUBJECT],
+      // S22.7's: refused for want of an author, before it reads a diff or runs anything.
+      ["review", join(agent, "soul"), "--subject", SUBJECT],
+      // S22.14's: `table` reads measure files and runs no git.
+      ["dispatch", "table", join(agent, "soul"), "--subject", SUBJECT],
       // S7.2's. The dry run and the real one both, because the deleting path
       // is the one that reads git (`rev-list --count`, on the verb allowlist)
       // and the one somebody would most want to be sure never pushed.
@@ -616,6 +641,14 @@ describe("C. behaviour — every command, watched by a git that writes down its 
       "browser",
       // D-154's: list and show run above.
       "task",
+      // S22.5's: `check` runs above.
+      "fleet",
+      // S22.11's: `list` runs above.
+      "grant",
+      // S22.7's: runs above.
+      "review",
+      // S22.14's: `table` runs above.
+      "dispatch",
     ]);
     const exempt = new Map([
       ["--version", "an alias of version"],

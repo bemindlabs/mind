@@ -48,7 +48,7 @@ import { engineCommand, installHooks, type InstallOutcome } from "../guard/hooks
 import { runGuarded } from "../spawn.ts";
 import type { SubjectId } from "../types.ts";
 import { enclosingGitRepo } from "./repo.ts";
-import { templateFiles } from "./template.ts";
+import { templateFiles, type TemplateKind } from "./template.ts";
 
 const FILE_MODE = 0o600;
 const DIR_MODE = 0o700;
@@ -107,6 +107,8 @@ export interface NewAgentRequest {
    * unpacked somewhere that is not a git repository has neither.
    */
   readonly engineRoot: string | undefined;
+  /** Which soul to start from; `blank` when omitted. */
+  readonly template?: TemplateKind;
   readonly git?: GitInit;
   readonly guard?: GuardInstall;
 }
@@ -163,7 +165,7 @@ export async function newAgent(request: NewAgentRequest): Promise<NewAgentOutcom
     // Does not exist yet, which is the expected case.
   }
 
-  const files = templateFiles(request.subject, request.name);
+  const files = templateFiles(request.subject, request.name, request.template ?? "blank");
   await mkdir(target, { recursive: true, mode: DIR_MODE });
   for (const file of files) {
     const path = join(target, file.path);

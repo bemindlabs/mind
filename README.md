@@ -8,11 +8,11 @@
 
 *Capability that stays with the person, not the organization.*
 
-[![Status](https://img.shields.io/badge/status-v0.11.1-green)](.scrum/backlog.md)
+[![Status](https://img.shields.io/badge/status-v0.11.5-green)](.scrum/backlog.md)
 [![Runtime](https://img.shields.io/badge/runtime-Bun-black?logo=bun)](.scrum/decisions.md#d-004)
 [![Protocol](https://img.shields.io/badge/agent--to--agent-A2A%201.0.0-blue)](.scrum/decisions.md#d-016)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](#license)
-[![Decisions](https://img.shields.io/badge/decisions-D--001%20→%20D--187-informational)](.scrum/decisions.md)
+[![Decisions](https://img.shields.io/badge/decisions-D--001%20→%20D--201-informational)](.scrum/decisions.md)
 
 <img src="docs/assets/hero.jpg" alt="An agent of light standing on a terminal, tied to a git branch, a local server and a padlock" width="720">
 
@@ -20,7 +20,7 @@
 
 ---
 
-> **v0.11.1 is the latest release (the tag `v0.11.1-alpha`); the first public alpha was v0.11.0 (`v0.11.0-alpha`). Both are alpha, and it charges nothing.** The full MVP is met (since v0.1.0): identity, isolation, a git repository per
+> **v0.11.3 is the latest release (the tag `v0.11.3-alpha`); the first public alpha was v0.11.0 (`v0.11.0-alpha`). All are alpha, and it charges nothing.** (v0.11.2 was tagged in the development repository and never published; v0.11.3 follows v0.11.1 on the public mirror.) The full MVP is met (since v0.1.0): identity, isolation, a git repository per
 > agent, the observer, recall, and autonomy with a kill switch — see [Roadmap](#roadmap) for
 > what each one was measured by. It is a 0.x: file formats and flags may still change, and
 > anything below marked `not built yet` describes what Mind is *designed* to do, not what it
@@ -49,7 +49,7 @@
 v0.11.0 on, **[cosign](https://github.com/sigstore/cosign)**. Mind itself is one self-contained binary: no
 runtime to install ([releases](https://github.com/bemindlabs/mind/releases)).
 
-> **v0.11.0 was the first signed release (the tag `v0.11.0-alpha`); the latest is v0.11.1, published as the tag `v0.11.1-alpha`.** `install.sh` holds `v0.11.0` as the first signed tag, so from there on it
+> **v0.11.0 was the first signed release (the tag `v0.11.0-alpha`); the latest is v0.11.3, published as the tag `v0.11.3-alpha`.** `install.sh` holds `v0.11.0` as the first signed tag, so from there on it
 > requires the cosign signature on `SHA256SUMS` and refuses to install without a good one.
 
 ### 1. Get cosign (once)
@@ -60,7 +60,7 @@ cannot verify: a missing cosign, a missing `.sig` or `.pem`, or a signature that
 prerequisite, not an extra. Without it `install.sh` says:
 
 ```
-install.sh: a verified signature is required for v0.11.1-alpha and there is none: cosign is not installed. Not installed.
+install.sh: a verified signature is required for v0.11.3-alpha and there is none: cosign is not installed. Not installed.
 ```
 
 On Linux, without root: download `cosign-linux-amd64` (or `cosign-linux-arm64`) from
@@ -80,19 +80,19 @@ install directory as it was), and then verifies the signature on `SHA256SUMS`. T
 read it, ask for a dry run, then run it.
 
 ```bash
-curl -fsSLO https://github.com/bemindlabs/mind/releases/download/v0.11.1-alpha/install.sh
+curl -fsSLO https://github.com/bemindlabs/mind/releases/download/v0.11.3-alpha/install.sh
 sh install.sh --dry-run        # says what it would do and downloads nothing
 sh install.sh
 mind --version                 # ~/.local/bin must be on your PATH
 ```
 
-The release is the tag `v0.11.1-alpha` (a pre-release); a URL that says `v0.11.1` answers 404. The dry run prints
+The release is the tag `v0.11.3-alpha` (a pre-release); a URL that says `v0.11.3` answers 404. The dry run prints
 this (recorded on 2026-10-14 by an automated reviewer on Linux x86_64, with the script of the first alpha, `v0.11.0-alpha`, and the install
 directory changed to a scratch one; the tag shown is the current one):
 
 ```
-mind v0.11.1-alpha for linux/x64
-  from  https://github.com/bemindlabs/mind/releases/download/v0.11.1-alpha
+mind v0.11.3-alpha for linux/x64
+  from  https://github.com/bemindlabs/mind/releases/download/v0.11.3-alpha
   to    ~/.local/bin/mind  (no root needed)
   the signature on SHA256SUMS is required
 Dry run: nothing was downloaded or changed.
@@ -100,16 +100,16 @@ Dry run: nothing was downloaded or changed.
 
 followed by a note about a group-writable parent directory (see below). A real run goes on to print
 `checksum ok (mind-linux-x64)`, `signature ok (cosign, the release workflow)` and `installed ~/.local/bin/mind`, took about
-8 seconds there, and `mind --version` then prints `0.11.1` (the binary does not carry the `-alpha` suffix). The one-line form,
-`curl -fsSL https://github.com/bemindlabs/mind/releases/download/v0.11.1-alpha/install.sh | sh`, does the same without the
+8 seconds there, and `mind --version` then prints `0.11.3` (the binary does not carry the `-alpha` suffix). The one-line form,
+`curl -fsSL https://github.com/bemindlabs/mind/releases/download/v0.11.3-alpha/install.sh | sh`, does the same without the
 reading step. The whole script is one function called on its last line, so a download that is cut short runs nothing.
 
-Settings: `MIND_VERSION=v0.11.1-alpha` pins a tag (with none it asks GitHub for the newest release, prereleases included,
+Settings: `MIND_VERSION=v0.11.3-alpha` pins a tag (with none it asks GitHub for the newest release, prereleases included,
 because `releases/latest` answers 404 while every release is marked a prerelease), `MIND_INSTALL_DIR` changes the
 directory, `MIND_REQUIRE_SIGNATURE=1` makes any release, old ones too, need a verified signature, and
 `sh install.sh --uninstall` removes the binary and **never your data** (removing data is `mind erase`, a typed phrase).
 
-What the v0.11.1-alpha release carries: every binary as `mind-<os>-<arch>`, `install.sh`, an SBOM
+What the v0.11.3-alpha release carries: every binary as `mind-<os>-<arch>`, `install.sh`, an SBOM
 (`mind-sbom.spdx.json`) and one `SHA256SUMS` with its `.sig` and `.pem` (there is no second copy under an older name). What the workflow builds:
 
 | Platform | File |
@@ -137,7 +137,7 @@ new directories so), run `chmod go-w` on that directory.
 ### By hand, with the signature checked first
 
 ```bash
-V=v0.11.1-alpha
+V=v0.11.3-alpha
 B=https://github.com/bemindlabs/mind/releases/download/$V
 curl -LO $B/mind-linux-x64 -LO $B/SHA256SUMS -LO $B/SHA256SUMS.sig -LO $B/SHA256SUMS.pem   # arm64: mind-linux-arm64
 cosign verify-blob --certificate-identity-regexp '^https://github.com/bemindlabs/mind(-dev)?/\.github/workflows/release\.yml@refs/tags/v.*$' \
@@ -284,13 +284,15 @@ terminal). Every category starts at 1, except the browser's `operate`, which sta
 
 **Since v0.10.2 (D-163, the owner's choice of 2026-10-06), a turn on a backend that is not inside Mind's kernel fence is
 held at write 1 and run 1 (propose only), at level 2 and at level 3 alike.** The dial still says 2; the turn does not get
-it. This is a temporary cap, and it exists because a user in the `docker` group (usual for anyone who runs Docker
+it. Since D-192, `claude`, `codex` and `grok` cloud turns run inside the fence where the kernel has Landlock, and keep
+the dial. The cap exists because a user in the `docker` group (usual for anyone who runs Docker
 without sudo) is root-equivalent: a turn that could write or run with no fence could reach the docker socket, the
 systemd user bus and the tailscale daemon.
 
 | Backend | At dial 2 or 3 |
 |---|---|
-| `claude`, `codex`, `grok`, `gemini`, `copilot`, `kimi` (the vendor CLIs, in the cloud) | **held at write 1 / run 1.** The vendor's read-only flag stays on. The turn still runs, answers, and files proposals. |
+| `claude`, `codex`, `grok` (in the cloud, fenced — D-192) | keep the dial, inside the fence: a home of Mind's own, the working directory writable, TCP 443 only. On a kernel without Landlock (macOS) they are held like the row below, and each turn says no fence is in force. |
+| `gemini`, `copilot`, `kimi` (in the cloud, not fenced) | **held at write 1 / run 1.** The vendor's read-only flag stays on. The turn still runs, answers, and files proposals, and says no fence is in force. |
 | `claude-local`, `grok-local` (the same CLIs driving a model on this machine through LiteLLM, inside the fence) | keep the dial. The kernel holds them to their read grants as well as their writes ([what a turn can read](#what-a-turn-can-read)). They need local action set up (LiteLLM with a `local-coder` route, E12), which the [quickstart](docs/quickstart.md) does not. |
 | `ollama` | has no tools at all: it answers and never acts, at any level. |
 
@@ -323,14 +325,18 @@ the full lists and what was measured.
   working directory, and it can see that an outside file exists, though not open it. Programs installed under your
   home (`nvm`'s node, `bun`, `cargo`, `pyenv`, `~/.local/bin`) do not run inside a local turn: install a tool
   system-wide, or keep it in the working directory.
-- **A cloud vendor CLI (`claude`, `codex`, `grok`, `gemini`, `copilot`, `kimi`) is not in the fence, and "read-only"
-  on it does not mean "cannot read".** It means the vendor may not change anything. All of them but `claude`, which is
-  started with no tools at all, keep a read tool or a shell, run as you, and can open any file your user can open and
-  send it to that vendor. The I-6 screen covers only the prompt Mind sends, never what a vendor's tool opens
-  afterwards, and the ledger records only the prompt. So a recalled note, an imported page or a message from someone
-  you allowed that says "read this file and quote it" can leak a file Mind never sees. Keep cloud backends other than
-  `claude` out of a chain that takes input you do not control (`--backend claude,ollama`), and keep secrets out of any
-  directory a cloud turn runs in.
+- **Cloud vendor CLIs: `claude`, `codex` and `grok` are fenced; `gemini`, `copilot` and `kimi` are not (D-192).**
+  Every `claude`, `codex` or `grok` turn that has a tool runs in the kernel fence with a home of Mind's own per vendor and
+  subject (holding a copy of the vendor's login, written back when the vendor refreshes it), writes only that home
+  and, at level 2 and above, its working directory, reads nothing else of your home, and connects only to TCP port 443
+  outside this machine and to its name servers. `claude` at level 1 is started with no tools at all and needs no
+  fence. The other three keep a read tool or a shell, run as you, and can open any file your user can open and send it
+  to that vendor; so does every vendor on a kernel without Landlock (macOS). Each such turn says so before it is sent.
+  The I-6 screen covers only the prompt Mind sends, never what a vendor's tool opens afterwards, and a fenced turn can
+  still send what it reads in its working directory. So a recalled note, an imported page or a message from someone
+  you allowed that says "read this file and quote it" can leak a file Mind never sees: keep the unfenced vendors out of
+  a chain that takes input you do not control, and keep secrets out of any directory a cloud turn runs in.
+  `mind backends` prints which vendors this machine fences; details in [`docs/fence.md`](docs/fence.md).
 - **The engine's own environment.** `mind turn`, `mind web` and the fence's supervisor are not dumpable
   (`PR_SET_DUMPABLE`), so a cloud CLI they start cannot open `/proc/<pid>/environ` of the engine. `mind chat serve`
   and `mind triggers tick` are not covered: they stay the grandparent of a cloud CLI, so keep the environment of those
@@ -598,7 +604,8 @@ mind persona extract  draft a soul from real artifacts with a local model — ev
 mind persona review   answer yes or no to each drafted claim, at a terminal
 mind persona adopt    write only the yeses into the soul; it must still load
 mind eval             how much of the job it does: the task set in evals.md, soul alone vs soul + recall,
-                         graded by phrase, by kind of work (S6.5, D-073)
+                         graded by phrase, by kind of work (S6.5, D-073); train / held-out split and
+                         --compare <ref> against the soul at a git ref (S21.2, S21.3, D-191)
 mind basis record     on what basis a subject's data comes in, and for which uses — typed at a terminal;
                          ingest and persona read nothing without one (S7.3, D-077)
 mind basis show       the records, active, expired or revoked
@@ -720,7 +727,7 @@ behind one `ExecBackend` interface — and only grows a native runtime if measur
 | **A — Core** ✅ | soul schema · `soul apply` · **`soul verify`** · `ExecBackend` + CLI exec | met 2026-09-21 (`9989b49`): a verify table across 3 backends with the raw answers kept, graded in 4 levels rather than collapsed to a boolean |
 | **B — Edges** ✅ | agent repo template (`.mind/`) · turn ledger · transcript spike | met: `git clone` into a stock `debian:bullseye-slim` holding only the binary and the checkout, reaching an ollama outside it → `soul verify` passes. Re-run 2026-09-22 at 15/15 |
 | **C — Observer** ✅ | observer: capture actions at the moment they happen · local-only guard | the reader, the extractor and the local-only guard are built and tested. Capture is **live on the owner's machine** since 2026-09-22 (D-034), and since 2026-09-23 a fleet launcher declares itself with `MIND_FLEET` so its work never lands in the owner's data (D-036). The extractor's accuracy bar (S3.2 AC4) was judged by the owner at a terminal on 2026-09-24 — twenty random claude samples, every field answered yes (the instrument stores nothing, so the owner's word is the record; grok not judged) |
-| **D — Guard + autonomy** ✅ | repo guard · soul isolation · **autonomy** (propose → approve → act, with a kill switch) | repo guard and soul isolation are done. The autonomy dial, the proposal store and `mind stop` are built (`666f894`, `1f320c3`); the kill switch (S5.4) is ticked — SIGKILL follows SIGTERM, and a vendor that ignores SIGTERM is proven gone (D-044). So are proposals (S5.2): at level 1 the agent proposes instead of acting and Mind files what it proposes (D-045), and a level-2 turn reports what it changed (D-043). Levels now differ as S5.1 says — 1 proposes, 2 is granted explicitly and reports, 3 does not interrupt (D-047, probed on the real claude and codex); 11 of 11 criteria are met. The categories are set apart and act together at the lowest of write, run and reach, because a shell both writes and reaches out (measured); every turn whose settings disagree names the one in force (D-052) · since v0.10.2 a turn on a backend with no kernel fence is held at write 1 / run 1 whatever the dial says, and only the fenced local chain acts at 2 or 3 (D-163; [what that means](#what-the-autonomy-dial-does-today)) |
+| **D — Guard + autonomy** ✅ | repo guard · soul isolation · **autonomy** (propose → approve → act, with a kill switch) | repo guard and soul isolation are done. The autonomy dial, the proposal store and `mind stop` are built (`666f894`, `1f320c3`); the kill switch (S5.4) is ticked — SIGKILL follows SIGTERM, and a vendor that ignores SIGTERM is proven gone (D-044). So are proposals (S5.2): at level 1 the agent proposes instead of acting and Mind files what it proposes (D-045), and a level-2 turn reports what it changed (D-043). Levels now differ as S5.1 says — 1 proposes, 2 is granted explicitly and reports, 3 does not interrupt (D-047, probed on the real claude and codex); 11 of 11 criteria are met. The categories are set apart and act together at the lowest of write, run and reach, because a shell both writes and reaches out (measured); every turn whose settings disagree names the one in force (D-052) · since v0.10.2 a turn on a backend with no kernel fence is held at write 1 / run 1 whatever the dial says, and only a fenced backend acts at 2 or 3 — the local chain, and since D-192 claude, codex and grok where the kernel has Landlock (D-163; [what that means](#what-the-autonomy-dial-does-today)) |
 | **E4 — recall** ✅ | per-identity recall: full-text + vectors, rebuildable from git, erasable | S4.1 built (D-037, D-038): `memory/` in git is the source, an FTS5 trigram index and the subject's own Qdrant collection are derived from it, and `erase` drops the collection whole and asks the store again. S4.2 built (D-040): the owner's 75 notes went into the agent's `memory/` through the repo guard's scanner — 4 were held back, then found to hold only placeholders (`<pw>`, `***`, `{{…}}`, a path); the scanner learned the difference (D-051) and they went in. S4.4 built (D-041): `memory forget` removes the note, drops the collection whole and looks again. S4.3 built (D-039): every turn carries related pieces of memory beside the soul, named on stderr before they go — ten invented facts, **0/10 without recall, 10/10 with it** on a local 27B model |
 | **E8/E9/E6 — reach & inheritance** ✅ | A2A · Telegram · persona from artifacts · eval | shipped v0.4.0–v0.5.1; the owner's own reviews of S6.1 and the S6.5 task set are the open part |
 | **E10/E11 — console & knowledge** ✅ | web console · knowledge memory (import, collections, the things memories share, distilled facts) | shipped v0.4.1–v0.7.1 (D-060 → D-095) |
@@ -741,7 +748,7 @@ The first public opening is an **alpha that charges nothing**; the plans and pri
 
 | | Alpha (free) | Beta | Production |
 |---|---|---|---|
-| Version | **0.11.x**. 0.11.1 is out, published as the tag `v0.11.1-alpha` (0.11.0, `v0.11.0-alpha`, was the first), signed by the release workflow (cosign), with `mind-linux-x64`, `mind-linux-arm64`, an SBOM and `install.sh` | **0.12.x** | **1.0.0** |
+| Version | **0.11.x**. 0.11.3 is out, published as the tag `v0.11.3-alpha` (0.11.0, `v0.11.0-alpha`, was the first), signed by the release workflow (cosign), with `mind-linux-x64`, `mind-linux-arm64`, an SBOM and `install.sh` | **0.12.x** | **1.0.0** |
 | What it is | Fixes and honest limits. MindHub with accounts, agent listings and open jobs, no money. Desktop and app only as they get signed builds | Feature-complete for the 1.0 scope. Breaking changes only with notice. Stripe in test mode. MindHub profiles, badge and owner-approved posts start here, with comments, follow and search | Plus and Pro charged (USD and THB), plus MindHub profiles, the verified badge and owner-approved posts (D-186). The 1.x compatibility promise. The alpha label ends |
 | Charges money | No | Test mode first. Live charging only if the owner rules so | Yes |
 
@@ -770,7 +777,7 @@ Full detail: [`.scrum/backlog.md`](.scrum/backlog.md) · every decision and its 
 
 ## Status
 
-v0.11.1. 21 epics · 146 stories · 5 spikes · 187 recorded decisions.
+v0.11.5. 23 epics · 170 stories · 5 spikes · 201 recorded decisions.
 The full MVP is met (`.scrum/backlog.md` §7) as of v0.1.0: Phases A and B, the observer, the autonomy core and
 recall (E4). v0.2.0 added scheduled triggers (S5.3), the `mind` name, `mind setup` and a macOS installer; v0.3.0 the pattern miner (S3.3); v0.4.0 adds agent-to-agent over A2A (E8), a chat connector for Telegram (E9), the web page, the local egress judge, proposal triage, the interest tracker (S3.4) and `mind update`; v0.4.1 grows the web page (Settings, Agent, Memories, the mascot, https behind tailscale serve, a key that survives restarts); v0.4.2 renders markdown, gives the local fallback a default model, and has the judge read the question rather than the soul; v0.5.0 starts identity inheritance (E6) — `persona` drafts a soul from real artifacts with every line tied to its source (S6.1), `eval` measures how much of the job an agent does (S6.5) — and adds a Profile wizard to the web page; v0.5.1 makes recall find the answer 91.7% of the time (was 79.2%), closes S6.2, and closes SP-3 as not passed for now; v0.6.0 records the basis a subject's data comes in on (S7.3) and turns the web page into an agent console — a Privacy tab, persona drafts answered on the page, memories created, edited, deleted and imported from files and web links, and a 3D map of how they link; v0.6.1 lets the chat switch backend and model, adds "/" commands for every action on the page, and imports pages built by JavaScript; v0.7.0 keeps knowledge apart from memory, gathers memories into collections, maps the ports, services, hosts and paths they share (`memory who`), and has a local model offer facts that a person confirms one by one (`memory distill`); v0.7.1 lets the web chat act again — a recalled note with a personal word is left out of what goes to a cloud backend instead of holding the whole turn on the tool-less local model — keeps the chat's last six exchanges, and fixes what a phone audit found; v0.7.2 fixes how each vendor CLI is run — grok acts at levels 2 and 3 and no longer loads Claude Code's hooks and MCP servers, kimi runs read-only through a profile Mind writes, codex stops fetching plugins and leaking keys to its shell, and a turn a vendor did not finish no longer counts as an answer; v0.8.0 completes local action (E12) — `claude-local` → `grok-local`, the real Claude Code and Grok CLIs on the local model, every turn inside a Landlock + seccomp fence that allows writes only where granted and connections only to LiteLLM on 127.0.0.1, so a turn may now use the pieces of memory a cloud backend never sees; `turn --route` picks them, the web says who answered and where, and on the owner's task set they answer 87.5% with recall without anything leaving the machine; v0.8.1 lets a phone pair with the page from a QR code (`mind web --qr`, Settings → Pair a phone) and unpair every phone by changing the key, tells a phone that asked when something is waiting — the handle and nothing else, through the platform's relay, off until a phone turns it on — has `doctor` ask LiteLLM where `local-coder` goes, and looks in kimi's home `AGENTS.md`; v0.8.2 fixes `mind backends` on the local backends, ties each phone's push subscription to the page key it paired with, closes what an independent review found in `doctor` and `erase`, switches off xAI's telemetry in grok turns, and adds `mind deploy plan` — a dry run of what a deploy to a VPS, GCP or AWS would do (S13.1); v0.8.3 shows the Memory map a filtered part at a time (D-137), has a search that could not run say so, passes an answer's recall sources to the app, and ships macOS binaries signed with a Developer ID and notarized (D-136); v0.9.0 gives each agent its own ed25519 key (S15.8), signs its usage reports priced by real cost from a dated table (S15.9), proves key possession and binds reports to a market, listing and job (S15.4 step one, D-141), hands a chosen model to vendor CLIs (D-142) and prices claude's 1-hour cache writes at their own rate (D-143); v0.10.0 runs an approved proposal once and lets a spent one be filed again only when nothing was sent (D-144), records every turn that finishes together (D-145), answers a question from memory with its sources (D-152), proves with a real-backend e2e that the agent acts, adds the `operate` dial category with approvals bound to the action (D-153), and ships the browser runtime (E17) that tasks will use next; v0.10.1 adds tasks (E17, D-154) — a goal carried over ordinary turns with a budget, a stop and a manual resume — whose browser actions that D-153 holds pause the task until the owner answers that one action, once (D-156), keeps the web key out of a service's journal (D-162), and asks approvals from before D-153 to be given again; v0.10.2 lets a task survive a restart of the web service — its runner in a systemd unit of its own, waiting for its backend and parking rather than failing (E18 P0) — and, for now, holds every turn with no kernel fence at write 1 / run 1 (D-163). v0.11.0 (2026-10-14) is the first public alpha, published as the tag `v0.11.0-alpha` and signed by the release workflow; it removes every earlier name with no compatibility layer (D-182). v0.11.1 (2026-10-14) is the latest, published as the tag `v0.11.1-alpha`: it fixes the engine bugs the first stranger run found (B1 to B7) and brings the quickstart and README in line. Next, by stage (D-184, see [Roadmap](#release-stages-d-184-2026-10-14)): alpha 0.11.x fixes and honest limits; beta 0.12.x, feature-complete for the 1.0 scope, with Stripe in test mode and, as a proposal, MindHub profiles and owner-approved posts (E20, not built yet); production 1.0.0 with Plus and Pro charged. Still planned behind them: deploy (E13) — `mind deploy` to a VPS, GCP or AWS the owner rents, with an encrypted disk unlocked from a machine the owner controls — and the owner's own reviews of S6.1, the S6.5 task set and distilled facts.
 

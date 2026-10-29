@@ -1,0 +1,5 @@
+schema = "mind/code-eval@1"
+ask = "sum() in src/sum.js returns the wrong total for some inputs. Find the cause and fix it in the source."
+gate = ["bun", "test/check.js"]
+protect = ["test/**"]
+gate_timeout_s = 60

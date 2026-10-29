@@ -38,8 +38,8 @@ export function capNote(backendId: string, request: TurnRequest): string {
     `${backendId} is not kernel-fenced, so this turn was held at write ${UNFENCED_CAP_LEVEL} and run ` +
     `${UNFENCED_CAP_LEVEL} (propose only) although the dial allows ${act}. The vendor's read-only flag stays ` +
     `ON. Why: an unfenced turn running as you can reach the docker socket, the systemd user bus and ` +
-    `tailscaled, which is root on this machine (D-163). A turn on a fenced local backend (claude-local) ` +
-    `keeps the dial. This is a temporary cap until a fence for cloud vendors exists.`
+    `tailscaled, which is root on this machine (D-163). A turn on a fenced backend keeps the dial: the local ` +
+    `ones (claude-local), and the cloud vendors Mind fences (D-192) where the kernel has Landlock.`
   );
 }
 
@@ -95,6 +95,10 @@ export class CappedExec implements ExecBackend {
 
   async run(request: TurnRequest): Promise<TurnResult> {
     const capped = capRequest(this.inner, request);
+    // D-192 (F4): a cloud turn with a tool that runs without the kernel fence says so before it is sent, every
+    // turn — asked of the request as it will really run (after the cap).
+    const notice = this.inner.fenceNotice?.(capped.request);
+    if (notice !== undefined) this.say(notice);
     if (capped.note === undefined) return this.inner.run(request);
     if (this.toolless) return this.inner.run(capped.request);
     this.say(capped.note);

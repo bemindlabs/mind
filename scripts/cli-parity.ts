@@ -1238,6 +1238,16 @@ export const SCENARIOS: readonly Scenario[] = [
       // D-154's, as usage errors only: a real `new` spends turns.
       { argv: ["task"] },
       { argv: ["task", "wat"] },
+      // S22.5's, as usage errors only: `check` reads a file the sandbox does not have.
+      { argv: ["fleet"] },
+      { argv: ["fleet", "wat"] },
+      // S22.11's, as usage errors only: a real `give` writes a grant under the sandbox's personal directory.
+      { argv: ["grant"] },
+      { argv: ["grant", "wat"] },
+      // S22.7's, as a usage error only: a real review sends a diff to a vendor.
+      { argv: ["review"] },
+      // S22.14's, as a usage error only: the verbs read this sandbox's personal directory.
+      { argv: ["dispatch"] },
       { argv: ["update", "wat"] },
       { argv: ["ledger", "wat"] },
       { argv: ["ledger"] },

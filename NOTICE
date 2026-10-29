@@ -22,3 +22,9 @@ The QR encoder for pairing (src/web/qr.ts) is this project's own and follows
 the layout of Project Nayuki's QR Code generator library (MIT licence,
 https://www.nayuki.io/page/qr-code-generator-library); no file of it is
 included.
+
+The prompts the soul tuner sends to a proposer model (src/soul/tune/prompts.ts)
+follow the prompts of google-research/harness2
+(https://github.com/google-research/harness2), Copyright 2026 Google LLC,
+licensed under the Apache License, Version 2.0. Some sentences are adapted from
+it closely and were changed for Mind; no file of it is included.

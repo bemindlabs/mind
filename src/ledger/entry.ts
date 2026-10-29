@@ -159,6 +159,11 @@ export interface LedgerEntry {
   readonly identity: LedgerIdentity;
   /** sha256 of the rendered soul, so a reader knows which version was worn. */
   readonly soul_sha: string | null;
+  /**
+   * S22.8: present, and `machine`, when the turn was allowed to work anywhere on this machine but the red lines.
+   * Absent on every other turn, and on every line written before it existed.
+   */
+  readonly scope?: "machine";
 }
 
 /** Bytes a string occupies as UTF-8 — the size a `--private` line still records. */
@@ -327,6 +332,9 @@ export function parseLine(line: string): ParsedLine {
   // D-142's field: absent on older lines, a string or null on newer ones.
   if (value["model_requested"] !== undefined && !isStringOrNull(value["model_requested"])) {
     return { ok: false, reason: "model_requested is not a string or null" };
+  }
+  if (value["scope"] !== undefined && value["scope"] !== "machine") {
+    return { ok: false, reason: "scope is not machine" };
   }
   for (const field of ["exit", "duration_ms"]) {
     if (!isFiniteNumberOrNull(value[field])) {

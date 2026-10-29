@@ -327,6 +327,16 @@ describe("RecordingExec", () => {
     expect(unsplit.not_charged).toBe("usage-unsplit");
   });
 
+  test("S22.8: a turn run with scope machine says so on its line, and every other turn's line says nothing", async () => {
+    const env = await makeEnv();
+    const run = async (scope: "machine" | undefined) => {
+      await new RecordingExec(new Fake("claude", {}), options(env, scope === undefined ? {} : { scope })).run({ restraint: RESTRAINED, subject: SUBJECT, prompt: "p" });
+      return (await query(env, SUBJECT)).entries.at(-1)!;
+    };
+    expect((await run("machine")).scope).toBe("machine");
+    expect("scope" in (await run(undefined))).toBe(false);
+  });
+
   test("D-142: a vendor CLI's line names the model its output reported, and the one asked for apart", async () => {
     const env = await makeEnv();
     // Claude-shaped counts with both cache parts printed: 100 in, 10 out, nothing cached — a turn that can be priced.

@@ -1404,12 +1404,25 @@ export async function checkReadExposure(env: DoctorEnv): Promise<DoctorSection> 
             "none can read anything",
         ),
   );
+  // D-192: derived from the registry and this kernel, like `mind backends`, so a vendor fenced later leaves the
+  // unfenced list without anyone editing this sentence.
+  const fencedClouds = VENDORS.filter((spec) => spec.cloudHome !== undefined).map((spec) => spec.id);
+  const openClouds = VENDORS.filter((spec) => spec.cloudHome === undefined).map((spec) => spec.id);
+  const unfencedHere = support.ok ? openClouds : VENDORS.map((spec) => spec.id);
   findings.push(
     warn(
       "exposure:cloud-reads",
       "cloud CLIs",
-      "a vendor CLI at read-only that keeps its read tools (`mind backends` names them) can open any file you can " +
-        "and send it to that vendor; the egress screen sees only the prompt Mind sends, never what the tool reads",
+      (support.ok && fencedClouds.length > 0
+        ? `${fencedClouds.join(", ")} run every turn that has a tool inside the kernel fence (D-192): their home is ` +
+          "Mind's, not yours, and ~/.secrets, ~/.ssh and other subjects' data are refused to them. "
+        : "") +
+        (unfencedHere.length > 0
+          ? `${unfencedHere.join(", ")} ${support.ok ? "are not fenced" : `are not fenced on this kernel (${printable(support.reason)})`}: ` +
+            "a turn of theirs that keeps its read tools can open any file you can and send it to that vendor, " +
+            "and says so on every turn. "
+          : "") +
+        "The egress screen sees only the prompt Mind sends, never what the tool reads",
     ),
   );
 

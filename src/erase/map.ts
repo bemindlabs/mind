@@ -55,7 +55,7 @@ import { collectionFor } from "../memory/collection.ts";
 import { ragDirFor } from "../memory/marker.ts";
 import type { SubjectId } from "../types.ts";
 import { pushDirFor } from "../web/push-dir.ts";
-import { localCliHomeDir, type LocalCliHomeId } from "./local-cli-homes.ts";
+import { CLOUD_HOMES, cloudHomeDir, localCliHomeDir, type LocalCliHomeId } from "./local-cli-homes.ts";
 import type { PlaceId } from "./place-id.ts";
 import { backupTree, derivedTree, soulTree } from "./soul.ts";
 
@@ -95,7 +95,10 @@ export type MapKey =
   | "identity"
   | "ledger"
   | "local-claude"
-  | "local-grok";
+  | "local-grok"
+  | "cloud-claude"
+  | "cloud-codex"
+  | "cloud-grok";
 
 /** One directory of the map. */
 export interface MapTree {
@@ -282,6 +285,22 @@ export function subjectTrees(
     dir: personalPath(env, subject),
     travel: COPIED,
   });
+  // D-192: the home of Mind's own each fenced cloud vendor ran this subject's turns in — the vendor's transcripts
+  // of those turns, its scratch files and a copy of its login. One subject's alone, so removed whole.
+  for (const vendor of CLOUD_HOMES) {
+    trees.push({
+      key: `cloud-${vendor}`,
+      place: "ledger",
+      label: `the ${vendor} home Mind keeps for this subject — the vendor's transcripts of its fenced turns and a copy of its login`,
+      dir: cloudHomeDir(env, vendor, subject),
+      travel: {
+        kind: "stays",
+        why:
+          "the vendor CLI's own home on this machine, with a copy of its login. Vendor CLIs, their logins and " +
+          "what they keep do not go (D-109, S13.7): a fenced turn there makes its own",
+      },
+    });
+  }
   // The agent's own ed25519 key (S15.8, D-108, D-138) — beside personal/, not in it: a credential, not
   // somebody's personal data. Copied, because the agent there is the same agent: a new key would be a
   // different signer to everyone who knew this one. On the encrypted volume, like everything copied.

@@ -15,6 +15,8 @@
  */
 
 import type { Availability, ExecBackend, IdentityStrength, TurnRequest, TurnResult } from "./backend.ts";
+import type { Health } from "./health.ts";
+import { classifyLimit } from "./limit.ts";
 
 /**
  * Try backends in order until one actually answers.
@@ -36,10 +38,16 @@ export class FallbackExec implements ExecBackend {
    * @param chain Backends in preference order. Must not be empty.
    * @param id Reported id; defaults to naming the chain, so evidence says
    *   which route was configured, not just which one answered.
+   * @param health Which backends are resting (S22.2, D-197). A resting one is skipped without being asked
+   *   (no `available()`, no turn), and a miss that says the quota is gone puts one to rest. Without it the
+   *   chain behaves as before: every backend is tried on every turn.
+   * @param clock Epoch milliseconds; a test says what time it is.
    */
   constructor(
     private readonly chain: readonly ExecBackend[],
     readonly id: string = chain.map((b) => b.id).join("→"),
+    private readonly health?: Health,
+    private readonly clock: () => number = Date.now,
   ) {
     if (chain.length === 0) throw new Error("FallbackExec needs at least one backend");
   }
@@ -87,9 +95,17 @@ export class FallbackExec implements ExecBackend {
       };
     }
     const attempts: string[] = [];
+    /** When each backend that rested during this run can be tried again: the answer to "when does this resume". */
+    const resumes: number[] = [];
     let last: TurnResult | undefined;
 
     for (const candidate of this.chain) {
+      const held = this.health?.coolingUntil(candidate.id, this.clock());
+      if (held !== undefined) {
+        attempts.push(`${candidate.id}: resting until ${new Date(held.until).toISOString()} (${held.reason})`);
+        resumes.push(held.until);
+        continue;
+      }
       const ready = await candidate.available();
       if (!ready.ok) {
         attempts.push(`${candidate.id}: unavailable (${ready.detail})`);
@@ -113,13 +129,21 @@ export class FallbackExec implements ExecBackend {
         };
       }
 
-      attempts.push(`${candidate.id}: ${result.confidence}`);
+      const signal =
+        this.health === undefined ? undefined : classifyLimit(`${result.text}\n${result.evidence.raw}`, this.clock());
+      if (signal !== undefined && signal.kind !== "transient") {
+        this.health?.record(candidate.id, signal, this.clock());
+        const held = this.health?.coolingUntil(candidate.id, this.clock());
+        if (held !== undefined) resumes.push(held.until);
+      }
+      attempts.push(`${candidate.id}: ${result.confidence}${signal === undefined ? "" : ` (${signal.kind})`}`);
       last = result;
     }
 
     // Everything missed. Report the last real attempt so the caller sees a
     // concrete failure, with the full trail attached.
-    const trail = `[fallback] all ${this.chain.length} backend(s) missed · ${attempts.join(" · ")}`;
+    const retry = resumes.length === 0 ? "" : ` · earliest retry ${new Date(Math.min(...resumes)).toISOString()}`;
+    const trail = `[fallback] all ${this.chain.length} backend(s) missed · ${attempts.join(" · ")}${retry}`;
     if (last === undefined) {
       return {
         backend: this.id,

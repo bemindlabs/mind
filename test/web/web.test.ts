@@ -1794,3 +1794,155 @@ describe("tasks (D-154): one API for the page and the app, every route a command
     expect(PAGE_HTML).toContain('api("/api/tasks/" + t.id + "/screen")');
   });
 });
+
+describe("D-194 — /api/turn names the turn, /api/turn-detail says what it did", () => {
+  const LINE = "aaaaaaaa-bbbb-cccc-dddd-000000000001";
+  const NO_RECALL_LINE = "aaaaaaaa-bbbb-cccc-dddd-000000000002";
+  const OLD_LINE = "aaaaaaaa-bbbb-cccc-dddd-000000000003";
+  const post = (h: ReturnType<typeof handler>, prompt: string) => h(req("/api/turn", { method: "POST", body: JSON.stringify({ prompt }) }));
+
+  function rig() {
+    const { deps } = fakeDeps();
+    const answers: Record<string, unknown> = {
+      one: { text: "hi", route: "answered by ollama", entry: LINE, recall: { chars: 90, ceiling: 4000, skipped: 0, attached: [{ path: "memory/a.md", heading: "A note", chars: 90, via: ["fts"], text: "SECRET BODY TEXT" }] } },
+      two: { text: "hi", route: "answered by ollama", entry: NO_RECALL_LINE, recall: null },
+      old: { text: "hi", route: "answered by ollama" },
+    };
+    const wired: WebDeps = {
+      ...deps,
+      run: async (args) => ({ code: 0, stdout: JSON.stringify(answers[args[args.indexOf("--prompt") + 1]!]), stderr: "" }),
+      turnDetail: async (tid) => ([LINE, NO_RECALL_LINE, OLD_LINE].includes(tid) ? { asked: "q", answer: "a", backend: "ollama", model: null, modelRequested: null, when: "now", content: "full", route: "answered by ollama · identity arrived as none · 1.0s", durationMs: 1000 } : undefined),
+    };
+    return handler(wired, "tok", HOSTS);
+  }
+
+  test("the answer carries the id, and /api/turn-detail resolves it; every old field stays", async () => {
+    const h = rig();
+    const body = (await (await post(h, "one")).json()) as Record<string, unknown>;
+    expect(body["id"]).toBe(LINE);
+    expect(body).toMatchObject({ ok: true, text: "hi", route: "answered by ollama", backend: "", held: 0, notes: "" });
+    const detail = (await (await h(req(`/api/turn-detail?id=${body["id"]}`))).json()) as Record<string, unknown>;
+    expect(detail).toMatchObject({ asked: "q", answer: "a", backend: "ollama", durationMs: 1000 });
+  });
+
+  test("a child that names no line gives id null — older engines, and nothing breaks", async () => {
+    const h = rig();
+    expect(((await (await post(h, "old")).json()) as Record<string, unknown>)["id"]).toBeNull();
+    const detail = (await (await h(req(`/api/turn-detail?id=${OLD_LINE}`))).json()) as Record<string, unknown>;
+    expect(Object.keys(detail)).not.toContain("recall");
+    expect(Object.keys(detail)).not.toContain("usage");
+    expect(Object.keys(detail)).not.toContain("costUsdMicros");
+  });
+
+  test("recall is paths and titles, never the text; a turn with none says so; one this process did not run says nothing", async () => {
+    const h = rig();
+    await post(h, "one");
+    await post(h, "two");
+    const raw = await (await h(req(`/api/turn-detail?id=${LINE}`))).text();
+    expect(JSON.parse(raw)["recall"]).toEqual([{ path: "memory/a.md", title: "A note" }]);
+    expect(raw).not.toContain("SECRET BODY TEXT");
+    expect(((await (await h(req(`/api/turn-detail?id=${NO_RECALL_LINE}`))).json()) as Record<string, unknown>)["recall"]).toEqual([]);
+    expect(Object.keys((await (await h(req(`/api/turn-detail?id=${OLD_LINE}`))).json()) as object)).not.toContain("recall");
+  });
+
+  test("404 is unchanged: an unknown id, and a thing that is not an id", async () => {
+    const h = rig();
+    expect((await h(req("/api/turn-detail?id=ffffffff-ffff-ffff-ffff-ffffffffffff"))).status).toBe(404);
+    expect((await h(req("/api/turn-detail?id=../x"))).status).toBe(404);
+  });
+
+  test("the server never opens the ledger: no store import, only `ledger show` through the wiring", async () => {
+    for (const file of ["src/web/server.ts", "src/web/turndetail.ts"]) {
+      const source = await Bun.file(join(import.meta.dir, "../..", file)).text();
+      expect(source, file).not.toMatch(/from\s+["'][^"']*ledger\/(store|index)/);
+      expect(source, file).not.toMatch(/\bquery\(/);
+    }
+    const wiring = await Bun.file(join(import.meta.dir, "../../bin/commands/web.ts")).text();
+    expect(wiring).toContain('"ledger", "show", "--subject", id, "--json", "--content"');
+  });
+});
+
+describe("the fleet routes (S22.9)", () => {
+  const fleet = (overrides: Partial<NonNullable<WebDeps["fleet"]>> = {}): NonNullable<WebDeps["fleet"]> => ({
+    view: async () => ({ bots: [], backends: [], dispatch: [], at: "2026-10-27T10:00:00.000Z" }),
+    rest: async (id, minutes) => ({ ok: true, message: `${id} rests ${String(minutes)}` }),
+    wake: async (id) => ({ ok: true, message: `${id} is called back` }),
+    stop: async (bot) => ({ ok: true, message: `${bot} stopped`, tasks: ["t-00000001"] }),
+    ...overrides,
+  });
+  const call = (deps: WebDeps, path: string, init: RequestInit = {}, token = "tok") =>
+    handler(deps, "tok", HOSTS)(req(path, { ...init, token }));
+
+  test("without --fleet the page says so and the actions answer 404", async () => {
+    const deps = fakeDeps().deps;
+    expect(await (await call(deps, "/api/fleet")).json()).toEqual({ enabled: false });
+    expect((await call(deps, "/api/fleet/backend", { method: "POST", body: "{}" })).status).toBe(404);
+    expect((await call(deps, "/api/fleet/stop", { method: "POST", body: "{}" })).status).toBe(404);
+  });
+
+  test("with it, the view is served, and every route is behind the page's own key (AC5)", async () => {
+    const deps: WebDeps = { ...fakeDeps().deps, fleet: fleet() };
+    const ok = await (await call(deps, "/api/fleet")).json();
+    expect(ok).toMatchObject({ enabled: true, bots: [], backends: [] });
+    for (const [path, init] of [["/api/fleet", {}], ["/api/fleet/backend", { method: "POST", body: "{}" }], ["/api/fleet/stop", { method: "POST", body: "{}" }]] as const) {
+      expect((await call(deps, path, init, "wrong")).status, path).toBe(401);
+    }
+  });
+
+  test("rest, wake and stop are POSTs that name what they act on, and refusals come back as a sentence with status 400", async () => {
+    const seen: string[] = [];
+    const deps: WebDeps = {
+      ...fakeDeps().deps,
+      fleet: fleet({
+        rest: async (id, minutes) => (seen.push(`rest ${id} ${String(minutes)}`), id === "gemini" ? { ok: false, reason: "not a backend of this fleet" } : { ok: true, message: "ok" }),
+        wake: async (id) => (seen.push(`wake ${id}`), { ok: true, message: "ok" }),
+        stop: async (bot) => (seen.push(`stop ${bot}`), { ok: true, message: "stopped", tasks: [] }),
+      }),
+    };
+    expect(await (await call(deps, "/api/fleet/backend", { method: "POST", body: JSON.stringify({ id: "claude", action: "rest", minutes: 30 }) })).json()).toEqual({ ok: true, message: "ok" });
+    expect(await (await call(deps, "/api/fleet/backend", { method: "POST", body: JSON.stringify({ id: "claude", action: "wake" }) })).json()).toEqual({ ok: true, message: "ok" });
+    const refused = await call(deps, "/api/fleet/backend", { method: "POST", body: JSON.stringify({ id: "gemini", action: "rest", minutes: 5 }) });
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toEqual({ ok: false, error: "not a backend of this fleet" });
+    expect((await call(deps, "/api/fleet/backend", { method: "POST", body: JSON.stringify({ id: "claude", action: "delete" }) })).status).toBe(400);
+    expect((await call(deps, "/api/fleet/backend", { method: "POST", body: "not json" })).status).toBe(400);
+    expect(await (await call(deps, "/api/fleet/stop", { method: "POST", body: JSON.stringify({ bot: "ada" }) })).json()).toEqual({ ok: true, message: "stopped", tasks: [] });
+    expect((await call(deps, "/api/fleet/stop", { method: "POST", body: JSON.stringify({}) })).status).toBe(400);
+    expect(seen).toEqual(["rest claude 30", "wake claude", "rest gemini 5", "stop ada"]);
+    // Nothing else is routed, and a GET cannot act.
+    expect((await call(deps, "/api/fleet/backend")).status).toBe(405);
+    expect((await call(deps, "/api/fleet/elsewhere", { method: "POST", body: "{}" })).status).toBe(404);
+  });
+});
+
+describe("the fleet tab in the page (S22.9)", () => {
+  test("is in the markup as a real tab with its panel, and is removed at start when the page has no fleet", () => {
+    expect(PAGE_HTML).toContain('<button role="tab" id="tabFleet" tabindex="-1" aria-selected="false" aria-controls="fleet">');
+    expect(PAGE_HTML).toMatch(/id="fleet" role="tabpanel" aria-labelledby="tabFleet" hidden/);
+    expect(PAGE_HTML).toContain('$("tabFleet").remove(); $("fleet").remove();');
+    expect(PAGE_HTML).toContain('const TABS = ["home", "agent", "profile", "memories", "tasks", "fleet", "privacy", "settings"];');
+  });
+
+  test("shows counts and states, never words: the script reads no prompt, answer or goal from the view", () => {
+    const script = PAGE_HTML.slice(PAGE_HTML.indexOf("async function loadFleet()"), PAGE_HTML.indexOf("async function loadTasks()"));
+    for (const word of [".prompt", ".text", ".goal", ".answer", ".summary", ".note"]) expect(script, word).not.toContain(word);
+  });
+
+  test("renders handoffs as plain text without an action", () => {
+    const script = PAGE_HTML.slice(PAGE_HTML.indexOf("async function loadFleet()"), PAGE_HTML.indexOf("async function loadTasks()"));
+    expect(script).toContain('for (const h of b.handoffs)');
+    for (const field of ["h.id", "h.branch", "h.base", "h.changedFiles", "h.diffStat", "h.mergeCommand"]) expect(script).toContain(field);
+    const handoff = script.slice(script.indexOf("for (const h of b.handoffs)"), script.indexOf("if (b.homeRest)"));
+    expect(handoff).toContain('el("pre", "meta", h.diffStat)');
+    expect(handoff).toContain('el("pre", "meta", h.mergeCommand)');
+    expect(handoff).not.toContain('el("button"');
+    expect(handoff).not.toContain("fleetAct(");
+  });
+
+  test("its three buttons call the three POSTs, and nothing on the tab calls a route that starts a turn", () => {
+    const script = PAGE_HTML.slice(PAGE_HTML.indexOf("async function loadFleet()"), PAGE_HTML.indexOf("async function loadTasks()"));
+    expect(script).toContain('"/api/fleet/stop"');
+    expect(script).toContain('"/api/fleet/backend"');
+    for (const route of ["/api/turn", "/api/tasks", "/api/memory-ask"]) expect(script, route).not.toContain(route);
+  });
+});

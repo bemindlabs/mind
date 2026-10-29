@@ -333,13 +333,14 @@ describe("keys, the skip link and the theme button", () => {
 
   test("the tablist: one tab stop in the markup, arrow, Home and End keys in the script, aria wiring kept", () => {
     const tabs = [...PAGE_HTML.matchAll(/<button role="tab" id="(tab[A-Za-z]+)"( tabindex="-1")? aria-selected="(true|false)" aria-controls="([a-z]+)"/g)];
-    expect(tabs).toHaveLength(7);
+    // Eight in the markup: Fleet (S22.9) is there too, and is removed at start unless the page was started with --fleet.
+    expect(tabs).toHaveLength(8);
     expect(tabs.filter((match) => match[2] === undefined).map((match) => match[1])).toEqual(["tabHome"]);
     expect(tabs.filter((match) => match[3] === "true").map((match) => match[1])).toEqual(["tabHome"]);
     for (const key of ["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp", "Home", "End"]) expect(PAGE_HTML).toContain(`"${key}"`);
     expect(PAGE_HTML).toContain('tabEl.tabIndex = t === which ? 0 : -1;');
     expect(PAGE_HTML).toContain('<nav class="tabs" role="tablist" aria-label="Sections">');
-    for (const panel of ["home", "agent", "profile", "memories", "tasks", "privacy", "settings"]) expect(PAGE_HTML).toMatch(new RegExp(`id="${panel}"[^>]*role="tabpanel"|role="tabpanel"[^>]*id="${panel}"`));
+    for (const panel of ["home", "agent", "profile", "memories", "tasks", "fleet", "privacy", "settings"]) expect(PAGE_HTML).toMatch(new RegExp(`id="${panel}"[^>]*role="tabpanel"|role="tabpanel"[^>]*id="${panel}"`));
   });
 
   test("the theme button: three states in the spec's order, a real button with a spoken state, a status line, kept per device", () => {

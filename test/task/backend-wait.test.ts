@@ -268,3 +268,68 @@ describe("a runner ended from outside (S18.1)", () => {
     expect(record.used.turns).toBe(1);
   });
 });
+
+describe("every backend of the chain resting (S22.10)", () => {
+  const HOUR = 3_600_000;
+
+  test("due back later than the wait would last: parked at once with the time, no runner sleeping for hours", async () => {
+    const { deps, reread, clock } = await setup(
+      aTask({ backend: "claude,codex" }),
+      () => answer(plan),
+      () => ({ ready: false, reason: "every backend of its chain is resting", retryAt: clock0() + 5 * HOUR }),
+    );
+    const out = await runTask(aTask({ backend: "claude,codex" }), deps);
+    expect(out.ok).toBe(true);
+    const record = await reread();
+    expect(record.status).toBe("parked");
+    expect(record.reason).toContain("parked until");
+    expect(record.resumeAfter).toBe(new Date(clock.ms + 5 * HOUR).toISOString());
+    // Nothing was spent: no step, no turn.
+    expect(record.steps).toEqual([]);
+    expect(record.used.turns).toBe(0);
+  });
+
+  test("due back within the wait: it waits for it as it waits for a local model, then carries on", async () => {
+    let asked = 0;
+    const { deps, reread, clock } = await setup(
+      aTask({ backend: "claude,codex" }),
+      (prompt) => answer(prompt.includes("only make the plan") ? plan : said({ done: true, summary: "all", result: "42" })),
+      () => (++asked <= 2 ? { ready: false, reason: "every backend of its chain is resting", retryAt: clock0() + 5 * 60_000 } : { ready: true }),
+    );
+    const out = await runTask(aTask({ backend: "claude,codex" }), deps);
+    expect(out.ok).toBe(true);
+    expect((await reread()).status).toBe("done");
+    expect(clock.ms).toBeGreaterThan(0);
+  });
+
+  test("a task parked after its wait ran out is given a time to be tried again, which `tick` reads", async () => {
+    const { deps, reread, clock } = await setup(
+      aTask({ backend: "claude-local", backendWaitMinutes: 1 }),
+      () => answer(plan),
+      () => DOWN,
+      { backendPollMs: 1 },
+    );
+    const original = deps.now;
+    let ticks = 0;
+    const moving: RunnerDeps = { ...deps, now: () => new Date(original().getTime() + 90_000 * ticks++) };
+    await runTask(aTask({ backend: "claude-local", backendWaitMinutes: 1 }), moving);
+    const record = await reread();
+    expect(record.status).toBe("parked");
+    expect(Date.parse(record.resumeAfter!)).toBeGreaterThan(clock.ms);
+  });
+
+  test("carried on, a parked task forgets the time it was parked until", async () => {
+    const { deps, reread } = await setup(
+      aTask({ backend: "claude,codex", status: "parked", resumeAfter: "2026-10-06T11:00:00.000Z", generation: 1 }),
+      (prompt) => answer(prompt.includes("only make the plan") ? plan : said({ done: true, summary: "all", result: "42" })),
+      () => ({ ready: true }),
+    );
+    await runTask(aTask({ backend: "claude,codex", status: "parked", resumeAfter: "2026-10-06T11:00:00.000Z", generation: 1 }), deps);
+    expect((await reread()).resumeAfter).toBeUndefined();
+  });
+});
+
+/** The clock `setup` starts every test on, so a test can name "now plus five hours" before the runner exists. */
+function clock0(): number {
+  return Date.parse("2026-10-06T12:00:00Z");
+}

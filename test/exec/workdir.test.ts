@@ -177,3 +177,17 @@ describe("unitWorkdirHints (doctor, read-only)", () => {
     rmSync(h, { recursive: true, force: true });
   });
 });
+
+describe("scope machine (S22.8): the working directory may hold a protected place, never lie inside one", () => {
+  test("a directory that contains protected places is allowed when the contains half is switched off", () => {
+    expect(workdirRefusal(base, places)).toContain("contains");
+    expect(workdirRefusal(base, places, false)).toBeUndefined();
+    expect(workdirRefusal(home, places, false)).toBeUndefined();
+  });
+
+  test("a directory inside a protected place is refused either way, through a link too", () => {
+    expect(workdirRefusal(join(home, ".ssh"), places, false)).toContain("lies inside");
+    expect(workdirRefusal(join(scratch, "to-ssh"), places, false)).toContain("lies inside");
+    expect(workdirRefusal(join(agent, "sub"), places, false)).toContain("lies inside");
+  });
+});

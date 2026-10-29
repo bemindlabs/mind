@@ -2,6 +2,7 @@
 
 import { relative, resolve } from "node:path";
 import { SIDE_BY_SIDE_NOTE, newAgent } from "../../src/agent/index.ts";
+import { TEMPLATE_KINDS, type TemplateKind } from "../../src/agent/template.ts";
 import { GIT_UNDELETABLE } from "../../src/guard/index.ts";
 import { isSubjectId, subjectId } from "../../src/types.ts";
 import { ENGINE_CHECKOUT, OUT, bold, dim, parseArgs, printPlaceNotices, usageError } from "../shared.ts";
@@ -20,7 +21,7 @@ export async function cmdNew(argv: readonly string[]): Promise<number> {
   const name = positional[0];
   const subject = options.get("subject");
   if (name === undefined || name === "" || subject === undefined || subject === "") {
-    return usageError("usage: mind new <name> --subject <id> [--dir <parent>]");
+    return usageError("usage: mind new <name> --subject <id> [--dir <parent>] [--template blank|coding]");
   }
 
   let id;
@@ -39,12 +40,17 @@ export async function cmdNew(argv: readonly string[]): Promise<number> {
     );
   }
 
+  const kind = options.get("template") ?? "blank";
+  if (!TEMPLATE_KINDS.includes(kind as TemplateKind)) {
+    return usageError(`unknown --template ${JSON.stringify(kind)} — one of: ${TEMPLATE_KINDS.join(", ")}`);
+  }
+
   const parent = options.get("dir");
   const dir = resolve(parent === undefined || parent === "" ? process.cwd() : parent, name);
 
   // `undefined` from the compiled binary, where there is no checkout to
   // compare a destination against. The git refusal is what holds there.
-  const result = await newAgent({ dir, subject: id, name, engineRoot: ENGINE_CHECKOUT });
+  const result = await newAgent({ dir, subject: id, name, engineRoot: ENGINE_CHECKOUT, template: kind as TemplateKind });
   if (!result.ok) {
     console.error(`mind: ${result.reason}`);
     return result.kind === "refused" ? 2 : 1;

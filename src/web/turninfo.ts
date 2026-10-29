@@ -37,3 +37,20 @@
 export function isLocalBackend(id: string): boolean {
   return id === "ollama" || id.endsWith("-local");
 }
+
+/**
+ * The one sentence that says who answered a turn and how long it took, as `mind turn` prints it on stderr and
+ * `--json` carries it as `route`. Pure, so the web server can say the same sentence about a turn it reads back
+ * from `mind ledger show --json` (a ledger line keeps the backend, the identity strength and the duration; the
+ * fallback trail is not kept, so there it is left out).
+ */
+export function routeSentence(turn: {
+  readonly answeredBy: string | null;
+  readonly identity: string;
+  readonly durationMs: number | null;
+  readonly trail: string | null;
+}): string {
+  const took = turn.durationMs === null ? "?" : `${(turn.durationMs / 1000).toFixed(1)}s`;
+  if (turn.answeredBy === null) return `no backend answered · ${took}${turn.trail === null ? "" : ` · ${turn.trail}`}`;
+  return `answered by ${turn.answeredBy} · identity arrived as ${turn.identity} · ${took}${turn.trail === null ? "" : ` · missed: ${turn.trail}`}`;
+}

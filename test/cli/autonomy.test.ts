@@ -360,6 +360,21 @@ describe("mind autonomy set", () => {
     expect(said(verdict, VENDORS)).not.toContain("REFUSED");
   });
 
+  test("at level 2 the per-backend line says the turn writes, not what the flag would hold", async () => {
+    // At 2 no read-only flag is sent, so "writes? no (measured)" described a restraint that was not in force.
+    const home = await sandbox();
+    await writeDial(home, { read: 2, write: 2, run: 2, reach: 2, operate: 1, setBy: null, setAt: null });
+    const loosened = said(await decideDial(home, { home, env: {} }), VENDORS);
+    for (const spec of VENDORS) {
+      expect(loosened).toContain(`${spec.id.padEnd(8)} writes? yes — no read-only flag is sent at level 2`);
+    }
+    expect(loosened).not.toMatch(/writes\? no/);
+    // The control: at the default level 1 the flag's own record is the answer, unchanged.
+    const restrained = said(await decideDial(null, { home: await sandbox(), env: {} }), VENDORS);
+    expect(restrained).not.toContain("writes? yes");
+    expect(restrained).toMatch(/writes\? no \((measured|on trust)\)/);
+  });
+
   test("setting level 1 on the real registry refuses no backend, and still names the believed one", async () => {
     const home = await sandbox();
     const result = await runCli(home, ["autonomy", "set", "write", "1", home, "--subject", "example"]);

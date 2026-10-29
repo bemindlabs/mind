@@ -258,3 +258,22 @@ describe("a line's cost (S15.9, D-110, D-139)", () => {
     if (!parsed.ok) expect(parsed.reason).toContain(reason);
   });
 });
+
+describe("scope (S22.8)", () => {
+  test("a line may say machine, and says nothing otherwise: older lines still read", () => {
+    const marked = parseLine(formatLine(entry({ scope: "machine" })));
+    expect(marked.ok).toBe(true);
+    if (marked.ok) expect(marked.entry.scope).toBe("machine");
+    const plain = parseLine(formatLine(entry()));
+    expect(plain.ok).toBe(true);
+    if (plain.ok) expect(plain.entry.scope).toBeUndefined();
+  });
+
+  test("any other value is refused, so a typo cannot read as a narrower scope", () => {
+    const raw = JSON.parse(formatLine(entry())) as Record<string, unknown>;
+    for (const value of ["worktree", "root", "", null, 1]) {
+      const line = JSON.stringify({ ...raw, scope: value });
+      expect(parseLine(line).ok, String(value)).toBe(false);
+    }
+  });
+});

@@ -52,6 +52,17 @@ import { basename } from "node:path";
  * - `cat-file` — the staged bytes, which is what a commit will actually keep.
  * - `rev-list` — how many commits are already unreachable by deletion.
  * - `config` — reading remote URLs, and only ever reading (see {@link refusal}).
+ * - `hash-object`, `read-tree`, `update-index`, `write-tree`, `commit-tree`, `update-ref` — S21.5's
+ *   plumbing (`mind soul tune`, D-193): a candidate soul becomes a commit on a branch of its own by
+ *   writing objects and one ref, never by touching the working tree, the index or HEAD. `update-index`
+ *   and `write-tree` run against a temporary index file (`GIT_INDEX_FILE`), `read-tree -m -u` is how an
+ *   adoption brings the working tree to the commit it just made. None of them reads or writes a remote:
+ *   every transport verb stays outside the list, and the list stays closed.
+ *
+ * - `worktree` — S22.8 AC3 (D-197): `mind task new --worktree` gives a task a checkout of its own. Only the form `add`
+ *   (see {@link GIT_WORKTREE_FORMS}): it writes a directory and a branch in the local repository and opens no
+ *   socket; `remove`, `prune`, `move` and `lock` stay outside, so Mind never deletes a worktree it did not just make.
+ *   It runs the repository's `post-checkout` hook, as `commit` already runs `pre-commit`.
  *
  * git refuses to let an alias shadow a builtin, so this list cannot be widened
  * by anything in a repository's own config.
@@ -64,10 +75,20 @@ export const GIT_VERBS: readonly string[] = [
   "cat-file",
   "rev-list",
   "config",
+  "hash-object",
+  "read-tree",
+  "update-index",
+  "write-tree",
+  "commit-tree",
+  "update-ref",
+  "worktree",
 ];
 
 /** The only `git config` forms Mind may use: the three that read. */
 export const GIT_CONFIG_READS: readonly string[] = ["--get", "--get-all", "--get-regexp"];
+
+/** The only `git worktree` form Mind may use: the one that makes a checkout. */
+export const GIT_WORKTREE_FORMS: readonly string[] = ["add"];
 
 /**
  * Binaries Mind refuses to start at all, whatever the arguments say.
@@ -213,6 +234,16 @@ export function refusal(argv: readonly string[]): string | undefined {
       `before the verb — \`-C\` and \`-c\` included, because \`-c alias.x=push\` is a push ` +
       `spelled differently. Use the cwd of the spawn instead.`
     );
+  }
+
+  if (verb === "worktree") {
+    const form = argv[2];
+    if (form === undefined || !GIT_WORKTREE_FORMS.includes(form)) {
+      return (
+        `git worktree may only ${GIT_WORKTREE_FORMS.join(", ")} — Mind makes a task's checkout and never removes, ` +
+        `moves or prunes one`
+      );
+    }
   }
 
   if (verb === "config") {

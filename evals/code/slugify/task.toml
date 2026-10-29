@@ -1,0 +1,5 @@
+schema = "mind/code-eval@1"
+ask = "slugify() in src/slug.js should lowercase, replace runs of non-alphanumerics with a single dash, and trim dashes from both ends. Make it do that."
+gate = ["bun", "test/check.js"]
+protect = ["test/**"]
+gate_timeout_s = 60

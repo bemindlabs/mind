@@ -80,6 +80,32 @@ describe("mind new", () => {
     expect(checked.stdout).toContain("discloses it is an AI");
   });
 
+  test("S22.12 AC1 — --template coding starts from a developer's soul, and it passes `soul check`", async () => {
+    const home = await sandbox("mind-home-");
+    const parent = await sandbox("mind-agents-");
+    const made = await run(home, ["new", "dev", "--subject", SUBJECT, "--dir", parent, "--template", "coding"]);
+    expect(made.code).toBe(0);
+
+    const role = await readFile(join(parent, "dev", "soul", "role.md"), "utf8");
+    expect(role).toContain("worktree");
+    expect(role).toContain("Kept by you");
+    // I-5 stays in the soul, in plain words.
+    expect(role).toContain("says plainly that it is an AI");
+
+    const checked = await run(home, ["soul", "check", join(parent, "dev", "soul"), "--subject", SUBJECT]);
+    expect(checked.code).toBe(0);
+  });
+
+  test("S22.12 — an unknown --template is a usage error and writes nothing", async () => {
+    const home = await sandbox("mind-home-");
+    const parent = await sandbox("mind-agents-");
+    const result = await run(home, ["new", "dev", "--subject", SUBJECT, "--dir", parent, "--template", "wizard"]);
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("--template");
+    expect(await Bun.file(join(parent, "dev", "soul", "role.md")).exists()).toBe(false);
+  });
+
   test("it says it committed nothing, and names the hard stop", async () => {
     const home = await sandbox("mind-home-");
     const parent = await sandbox("mind-agents-");

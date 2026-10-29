@@ -318,7 +318,8 @@ export const SPAWN_ONLY = new Map<string, HeldAtSize>([
   // 142 since S15.8: two `case` labels and two imports, for `key` and `usage`.
   // 145 since E17 (D-151): one `case` label and one import, for `browser`.
   // 148 since D-154: the `task` case.
-  ["bin/mind.ts", { lines: 148, why: "entry point — dispatch and process.exit" }],
+  // 149 since S21.5: the `soul tune` command is imported here and handed to `cmdSoul`, because one command may not import another.
+  ["bin/mind.ts", { lines: 163, why: "entry point — dispatch and process.exit" }],
   // One `export const USAGE = \`…\`` around 240 lines of help text. A test could
   // import it and the floor would read 100% off a single declaration while the
   // text said anything at all; the size is the only honest number here.
@@ -368,7 +369,12 @@ export const SPAWN_ONLY = new Map<string, HeldAtSize>([
   // and parked, exit 6, and resume taking a parked task.
   // 869 since the review of PR #31: exit 75 (left for resume) and `loginctl enable-linger`.
   // 895 since EXEC-02 and EEA-01: `mind doctor` also exits 1 for a readable LiteLLM master key, and the entry says so.
-  ["bin/usage.ts", { lines: 885, why: "help text — one declaration, 901 lines of prose" }],
+  // 896 since S21.1 (D-189): `eval --repeat`, `--no-record`, `--keep-answers`, and `eval runs`.
+  // 914 since S21.2 and S21.3: `eval --split`, `--compare`, `eval --compare-runs` and `eval split`.
+  // 941 since S21.5: `soul tune`, `tune adopt`, `tune undo` and `eval --base-run`.
+  // 956 since S21.7: `soul tune --selftest` and `soul tune proof`.
+  // 972 since S21.6: `soul tune lessons` (list, accept, reject) and the reflection in `soul tune`.
+  ["bin/usage.ts", { lines: 1076, why: "help text — one declaration, 1007 lines of prose" }],
   // The commands. Each is `cmdX(rest)` returning an exit code, and each reads
   // `process.env`, `homedir()` or `cwd` on its way. Calling them in-process
   // would mean swapping `HOME` inside the test runner; the tests spawn instead.
@@ -376,8 +382,11 @@ export const SPAWN_ONLY = new Map<string, HeldAtSize>([
   // in `dial.ts` can be called from a test and it is held to the floor, so the
   // report-writing that can only run in a spawned process lives on this side of
   // the line.
-  ["bin/commands/autonomy.ts", { lines: 317, why: "command — run by spawning the CLI" }],
-  ["bin/commands/backends.ts", { lines: 58, why: "command — run by spawning the CLI (test/cli/backends.test.ts runs it end to end)" }],
+  // 329 since D-192: one line per vendor saying whether the kernel fences its cloud turns, and the limits, both
+  // derived in src/exec/cloud-fence.ts (on the floor).
+  ["bin/commands/autonomy.ts", { lines: 329, why: "command — run by spawning the CLI" }],
+  // 65 since D-192: the same lines, under "The kernel fence around cloud turns".
+  ["bin/commands/backends.ts", { lines: 65, why: "command — run by spawning the CLI (test/cli/backends.test.ts runs it end to end)" }],
   // 113 since D-163 (Q4-D2): a line saying which backends are capped and the unit hints (src/exec/cap.ts and workdir.ts, on the floor, build them).
   // 117 since D-181: the line saying where the egress judge stands (src/egress/judge-mode.ts, on the floor, builds it).
   ["bin/commands/doctor.ts", { lines: 119, why: "command — run by spawning the CLI (the LiteLLM key and own addresses it reads: readLiteLLMKey, checkLocalAction)" }],
@@ -392,7 +401,7 @@ export const SPAWN_ONLY = new Map<string, HeldAtSize>([
   ["bin/commands/deploy.ts", { lines: 83, why: "command — run by spawning the CLI; its parts are tested in src/deploy, and test/cli/deploy.test.ts runs it" }],
   ["bin/commands/guard.ts", { lines: 171, why: "command — run by spawning the CLI" }],
   ["bin/commands/ledger.ts", { lines: 249, why: "command — run by spawning the CLI" }],
-  ["bin/commands/new.ts", { lines: 58, why: "command — run by spawning the CLI" }],
+  ["bin/commands/new.ts", { lines: 63, why: "command — run by spawning the CLI" }],
   // 677 since odd3: one `import { isatty } from "node:tty"`, which is what
   // replaced the two `process.stdout.isTTY` reads that truncated piped output.
   // 667 since E5: `readTerminalLine` moved to `bin/shared.ts`, because
@@ -423,7 +432,21 @@ export const SPAWN_ONLY = new Map<string, HeldAtSize>([
   // 323 since S15.4 step one (D-141): report's --market/--listing/--job and verify's pins, a stray option
   // refused by name in both, and the binding printed and said to be checked or not.
   ["bin/commands/usage.ts", { lines: 330, why: "command — run by spawning the CLI; its parts are tested in src/identity and src/pricing, and test/cli/key.test.ts runs report, verify and prices" }],
-  ["bin/commands/eval.ts", { lines: 106, why: "command — runs turns as children; its parts are tested in src/soul/evals, and test/cli/eval.test.ts runs it against a stub model" }],
+  // 153 since S21.1 (D-189): `--repeat`, the run record (`--no-record`, `--keep-answers`) and `eval runs`;
+  // the rates, the record, the soul version and the printed lines are `src/soul/eval-runs.ts`.
+  // 195 since S21.2: `--split`, and `eval split` proposing a held-out set (`--write` to put it in evals.md);
+  // the filter, the proposal and the edit are `src/soul/evals.ts` and `src/soul/eval-split.ts`.
+  // 275 since S21.3: `--compare <ref>` (both runs, linked) and `--compare-runs A B`; the soul at a ref, the
+  // changes, the T6 rule and the printed comparison are `src/soul/eval-soul-at.ts` and `src/soul/eval-compare.ts`.
+  // 293 since S21.5: `--base-run`, a recorded base reused so only the candidate is asked.
+  // 301 since S21.6: `--recall-only` names a lesson pulled from lessons.md, with its cue.
+  ["bin/commands/eval.ts", { lines: 407, why: "command — runs turns as children; its parts are tested in src/soul/evals, eval-runs, eval-split, eval-compare and eval-soul-at, and test/cli/eval.test.ts runs it against a stub model" }],
+  // S21.5 (D-193): `soul tune`, `tune adopt` and `tune undo` — the options, the child `mind turn` / `mind eval` calls and the
+  // printing; the round, the candidates, the git plumbing and adoption are `src/soul/tune/`, on the floor and tested there,
+  // and test/cli/tune.test.ts runs the command against a stub model in a real repository.
+  // 224 since S21.7 (D-195): `--selftest` (the controls are `src/soul/tune/selftest.ts`) and `proof`, printing and writing the record.
+  // 276 since S21.6 (D-196): `lessons` (list, accept, reject), the reflection reaching the same child turn as the proposer.
+  ["bin/commands/tune.ts", { lines: 276, why: "command — runs turns as children; its parts are tested in src/soul/tune, and test/cli/tune.test.ts runs it against a stub model" }],
   ["bin/commands/persona.ts", { lines: 267, why: "command — asks a local model and a person at a terminal; its parts are tested in src/soul/extract, and test/cli/persona.test.ts runs it against a stub model" }],
   // 231 since D-142: `serve` refuses a `--model` every answer's turn would refuse, once, at start.
   ["bin/commands/chat.ts", { lines: 232, why: "command — serve polls until Ctrl-C; its parts are tested in src/connectors, and test/cli/chat.test.ts runs it against a stub Telegram" }],
@@ -445,14 +468,14 @@ export const SPAWN_ONLY = new Map<string, HeldAtSize>([
   // 453 with main's #28 and #29 (the printed link moved to src/web/banner.ts; approvalLists) and the tasks.
   // 461 since EXEC-02: the call that makes this process not dumpable, and the line it prints when it could not
   // (src/exec/fence.ts engineNotDumpable and notDumpableNote, on the floor; test/exec/dumpable.test.ts).
-  ["bin/commands/web.ts", { lines: 464, why: "command — serves until Ctrl-C; its parts are tested in src/web (the --qr print: src/web/qr.ts; the printed link, D-162: src/web/banner.ts and test/cli/web.test.ts; the key change: startWeb + replaceKey; the push wiring and 30 s watch, per page key: src/web/push.ts, checked live against a loopback relay 2026-09-27; tasks and their held actions: src/task/screen.ts and src/task/answer.ts)" }],
+  ["bin/commands/web.ts", { lines: 516, why: "command — serves until Ctrl-C; its parts are tested in src/web (the --qr print: src/web/qr.ts; the printed link, D-162: src/web/banner.ts and test/cli/web.test.ts; the key change: startWeb + replaceKey; the push wiring and 30 s watch, per page key: src/web/push.ts, checked live against a loopback relay 2026-09-27; tasks and their held actions: src/task/screen.ts and src/task/answer.ts)" }],
   // 911 since D-152: `memory ask` (routing, egress, ledger, a read-only chain) — run by test/cli/memory-ask.test.ts;
   // its words and arithmetic are src/memory/ask.ts, on the floor.
   // 923 since the PR #14 review: no-tools backends only, relevance before the split; an ignored stop is ended by
   // CliExec's own SIGKILL round (PR #12), not a second one here.
   // 927 since the D-152 follow-up: each ask's recall numbers appended; the answer read against the handed paths.
   // 932 since D-181: `ask` resolves the judge for a cloud-bound ask and hands its layer to the announced chain.
-  ["bin/commands/memory.ts", { lines: 932, why: "command — run by spawning the CLI" }],
+  ["bin/commands/memory.ts", { lines: 934, why: "command — run by spawning the CLI" }],
   ["bin/commands/observe.ts", { lines: 751, why: "command — run by spawning the CLI" }],
   // S5.2. The store itself is `src/decide/proposals.ts`, on the floor and
   // tested there; what is here is the parsing, the four subcommands, and the
@@ -471,7 +494,8 @@ export const SPAWN_ONLY = new Map<string, HeldAtSize>([
   ["bin/commands/rebuild.ts", { lines: 38, why: "command — run by spawning the CLI" }],
   // 570 since S15.8: `soul card` reads the agent's key — never makes one — and prints its public half.
   // 572 since D-142: `soul verify --model` is routed per backend the way `turn` routes it.
-  ["bin/commands/soul.ts", { lines: 572, why: "command — run by spawning the CLI" }],
+  // 574 since S21.5: `soul tune` is dispatched here, to the handler the entry point hands in.
+  ["bin/commands/soul.ts", { lines: 574, why: "command — run by spawning the CLI" }],
   // E5. The signalling itself is in `src/decide/runs.ts`, where a test can
   // drive it against processes the test spawned; what is here is the order of
   // the three steps and the report.
@@ -526,7 +550,8 @@ export const SPAWN_ONLY = new Map<string, HeldAtSize>([
   // 777 since D-163 (Q4-D2): the workdir refusal and the `CappedExec` wrap — the rules themselves are
   // src/exec/cap.ts and src/exec/workdir.ts, on the floor; what is here is calling them.
   // 781 since D-181 and EXEC-02: the two lines at the top of the command, and the judge is resolved for the chain (named, automatic or absent) and its layer handed to each member.
-  ["bin/commands/turn.ts", { lines: 781, why: "command — run by spawning the CLI" }],
+  // 786 since D-192: an unfenced cloud turn's notice and a login not written back are kept in `notes`.
+  ["bin/commands/turn.ts", { lines: 837, why: "command — run by spawning the CLI" }],
   // D-154. The store, the loop, the budget, the stop, the views are src/task/, on the floor; what is here is parsing,
   // printing and wiring the runner to this machine — run by test/cli/task.test.ts against a stub model.
   // 375 since D-156: `approve` and `deny` (src/task/approvals.ts, on the floor), the runner's watch and the
@@ -545,7 +570,12 @@ export const SPAWN_ONLY = new Map<string, HeldAtSize>([
   // 462 since the review of PR #31: the SIGTERM decision is `termHandler` (src/task/term.ts, on the floor, both
   // branches tested) and only wired here; "already running" for a second start; the short-command deadline is
   // `runShort` (src/task/unit.ts). Run for real by test/e2e/always-on.e2e.ts (cases 3 and 6).
-  ["bin/commands/task.ts", { lines: 468, why: "command — run by spawning the CLI; its parts are tested in src/task, and test/cli/task.test.ts runs it" }],
+  ["bin/commands/task.ts", { lines: 633, why: "command — run by spawning the CLI; its parts are tested in src/task, and test/cli/task.test.ts runs it" }],
+  ["bin/commands/fleet.ts", { lines: 98, why: "command — run by spawning the CLI; its parts are tested in src/fleet, and test/cli/fleet.test.ts runs it" }],
+  ["bin/commands/grant.ts", { lines: 136, why: "command — run by spawning the CLI; its parts are tested in src/task, and test/cli/grant.test.ts runs it" }],
+  ["bin/commands/review.ts", { lines: 165, why: "command — run by spawning the CLI; its parts are tested in src/review, and test/cli/review.test.ts runs it" }],
+  ["bin/commands/dispatch.ts", { lines: 196, why: "command — run by spawning the CLI; its parts are tested in src/dispatch, and test/cli/dispatch.test.ts runs it" }],
+  ["bin/plan-io.ts", { lines: 27, why: "the facts a ranking needs, read from this machine for `mind dispatch` and `mind task new --backend auto`; run by spawning the CLI, tested through test/cli/dispatch.test.ts" }],
   ["bin/commands/worn.ts", { lines: 66, why: "command — run by spawning the CLI" }],
 ]);
 
@@ -691,10 +721,11 @@ export const PROOFS = new Map<string, Proof>([
   [
     "scripts/cli-parity.ts",
     {
-      sha256: "8526ae13a4b5d8e9b9641449768918ab56c2dbe1b0377fd6e39c045eb78ff304",
-      provedOn: "2026-10-13",
+      sha256: "31c7ec2b68acbfa2c0fb1e3560307c128bbb7997cdc32f4a0319ac823993eea3",
+      provedOn: "2026-10-27",
       by: "npm run parity -- --base . --selftest",
       result:
+        "Re-proved 2026-10-28 after S22.14 added the usage-error step `dispatch` (`review`, `grant` and `fleet` before it): exit 0, all four controls passed. Before that, 2026-10-27 after S22.7 added the usage-error step `review` (`grant` and `grant wat` before it): exit 0, all four controls passed. Before that, after S22.5 added `fleet` and `fleet wat`. Earlier proof: " +
         "exit 0 — control 1 steady, control 2 not blind to a changed character, control 3 not " +
         "blind to an added line, and control 4 refusing a side with no engine in it, over all " +
         "18 case(s), 206 invocation(s) per side. Re-proved for the names clean (D-182): the " +

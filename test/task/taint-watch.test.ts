@@ -161,7 +161,7 @@ describe("the runner asks its own memory first (final review: task.ts consulting
   test("the task command's runner signs through runnerTaint, and hands its answer to every release", async () => {
     const source = await Bun.file(new URL("../../bin/commands/task.ts", import.meta.url)).text();
     expect(source).toMatch(/const \{ tainted, stop: stopWatching \} = await runnerTaint\(env, record\.operate === 2\);/);
-    expect(source).toMatch(/watchApprovals\(\{[^}]*\btainted \}\)/);
+    expect(source).toMatch(/watchApprovals\(\{[^}]*\btainted(, standing)? \}\)/);
     expect(source).not.toMatch(/tainted: \(at: number\) => taintedAt\(/);
   });
 });

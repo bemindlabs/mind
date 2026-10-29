@@ -400,6 +400,12 @@ export async function watchApprovals(options: {
   readonly ended?: boolean;
   /** `taintedAt`: a yes claimed while a turn of the owner that could run commands ran is released as no. */
   readonly tainted: (claimedAtMs: number) => Promise<string | undefined>;
+  /**
+   * S22.11: a standing grant that answers a pending action, or `undefined`. Asked once per pending approvable action;
+   * a hit is answered through {@link decideApproval}, the way an owner's yes is, so every check on that path applies.
+   * `record` is called only when that answer was really claimed.
+   */
+  readonly standing?: (approval: ActionApproval) => Promise<{ readonly by: string; readonly record: () => Promise<void> } | undefined>;
 }): Promise<{ readonly waiting: boolean; readonly waitedMs: number; readonly notes: readonly string[]; readonly stop: boolean }> {
   await fileHeld(options.taskDir, options.outDir, options.task, options.step);
   let approvals = await readApprovals(options.taskDir, options.outDir, options.task, options.now);
@@ -414,6 +420,23 @@ export async function watchApprovals(options: {
       by: outlived(approval) ? "its step ended first" : "nobody answered in time",
       stop: "0",
     });
+  }
+  if (options.standing !== undefined && options.ended !== true) {
+    for (const approval of approvals.filter((a) => a.status === "pending" && a.approvable && a.step === options.step)) {
+      const hit = await options.standing(approval);
+      if (hit === undefined) continue;
+      const answered = await decideApproval({
+        taskDir: options.taskDir,
+        task: options.task,
+        id: approval.id,
+        verdict: "approve",
+        by: hit.by,
+        now: options.now,
+        outDir: options.outDir,
+        openStep: options.step,
+      });
+      if (answered.ok) await hit.record();
+    }
   }
   await writeReleases({
     taskDir: options.taskDir,

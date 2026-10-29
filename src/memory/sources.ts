@@ -3,7 +3,7 @@
  * return (D-037, S4.1 AC5).
  *
  * The source of truth for an agent's knowledge is `memory/**\/*.md` in its own
- * repository. Everything S4.1 writes elsewhere — the full-text file under
+ * repository (and, since S21.6, the accepted lessons of `lessons.md` at its root). Everything S4.1 writes elsewhere — the full-text file under
  * `.mind/index/`, the vector collection in Qdrant — is derived from what this
  * file returns, and must be rebuildable from it alone. So this is pure over
  * the file contents, and the id of each piece is a hash of *where it came
@@ -22,6 +22,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { isUntouchedMemoryReadme } from "../agent/template.ts";
+import { LESSONS_FILE, lessonHeading, parseLessons, renderEntry } from "../soul/lessons-format.ts";
 import { ACTION_KINDS, SUMMARY_PATH, SUMMARY_PROGRAMS, type ActionsSummary } from "../observer/actions.ts";
 
 /** Where the sources live, relative to the agent repository (D-014). */
@@ -163,6 +164,20 @@ export async function readMemory(agentDir: string): Promise<MemorySources> {
     } catch (cause) {
       unreadable.push({ path: rel, reason: String(cause) });
     }
+  }
+  // S21.6 (T7, D-196): the second file outside memory/ that recall reads, on purpose. `lessons.md` at the agent root
+  // holds only lessons its owner accepted (`mind soul tune lessons accept`), each one piece (`## Lesson: <cue>`), so a
+  // lesson whose cue matches reaches a turn through the same recall and inside the same cap as any note (D-075). A
+  // proposed lesson is not in the file and so not here; a file that is not a lessons file is reported, not guessed at.
+  try {
+    const parsed = parseLessons(await readFile(join(agentDir, LESSONS_FILE), "utf8"));
+    if (!parsed.ok) unreadable.push({ path: LESSONS_FILE, reason: parsed.reason });
+    else if (parsed.entries.length > 0) {
+      parsed.entries.forEach((entry, ordinal) => chunks.push({ id: chunkId(LESSONS_FILE, ordinal), path: LESSONS_FILE, heading: lessonHeading(entry), ordinal, text: renderEntry(entry).trim() }));
+      files.push(LESSONS_FILE);
+    }
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code !== "ENOENT") unreadable.push({ path: LESSONS_FILE, reason: String(cause) });
   }
   // D-040: the one piece of capture recall may carry is the committed summary —
   // counts keyed by words Mind holds in its own source, never a path, a

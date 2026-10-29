@@ -15,6 +15,7 @@ import type { Level, ReachLevel } from "../../src/decide/autonomy.ts";
 import type { ExecBackend, TurnRequest, TurnResult } from "../../src/exec/backend.ts";
 import { CappedExec, HELD_AT_ONE_TASK, capLine, capRequest, capSurvey, runsFenced } from "../../src/exec/cap.ts";
 import { CliExec } from "../../src/exec/cli-exec.ts";
+import { fenceSupport } from "../../src/exec/fence.ts";
 import { LOCAL_BACKENDS, localCliBackend } from "../../src/exec/local-cli.ts";
 import { VENDORS } from "../../src/exec/registry.ts";
 import { capRestraint, restrain, UNFENCED_CAP_LEVEL } from "../../src/exec/restraint.ts";
@@ -51,9 +52,10 @@ class ProvenFence extends NewBackend {
 }
 
 describe("which backends are capped — asked of the backend, per request", () => {
-  test("every vendor CLI is capped at the loosened dial, and the cap is write 1 / run 1 (act 1)", () => {
+  test("every vendor CLI the kernel does not fence is capped at the loosened dial, and the cap is write 1 / run 1 (act 1)", () => {
+    // D-192: on a kernel without Landlock no cloud turn is fenced, so every vendor is capped there.
     for (const spec of VENDORS) {
-      const asked = capRequest(new CliExec(spec), request());
+      const asked = capRequest(new CliExec(spec, { support: () => ({ ok: false, reason: "synthetic" }), argv: (argv) => [...argv] }), request());
       expect(asked.note).toBeDefined();
       expect(asked.request.restraint.loosened).toBe(false);
       expect(asked.request.restraint.act).toBe(UNFENCED_CAP_LEVEL);
@@ -72,10 +74,13 @@ describe("which backends are capped — asked of the backend, per request", () =
     }
   });
 
-  test("a vendor CLI is fenced exactly when the request carries the fence its run() applies", () => {
-    const cli = new CliExec(VENDORS[0]!);
-    expect(cli.appliesFence(request())).toBe(false);
-    expect(cli.appliesFence(request(LOOSENED, { fence: { writable: [], tcpPorts: [] } }))).toBe(true);
+  test("a vendor CLI is fenced exactly when its run() applies a fence: the request's, or D-192's own for a cloud turn", () => {
+    const bare = new CliExec(VENDORS[0]!, { support: () => ({ ok: false, reason: "synthetic" }), argv: (argv) => [...argv] });
+    expect(bare.appliesFence(request())).toBe(false);
+    expect(bare.appliesFence(request(LOOSENED, { fence: { writable: [], tcpPorts: [] } }))).toBe(true);
+    const onLandlock = new CliExec(VENDORS[0]!, { support: () => ({ ok: true, abi: 8 }), argv: (argv) => [...argv] });
+    expect(onLandlock.appliesFence(request())).toBe(true);
+    expect(onLandlock.appliesFence(request(RESTRAINED))).toBe(false);
   });
 
   test("a new backend that says nothing is capped by default (fail closed)", () => {
@@ -109,7 +114,7 @@ describe("the wrapper", () => {
     expect(inner.seen?.restraint.act).toBe(1);
     expect(said).toHaveLength(1);
     expect(said[0]).toContain("held at write 1 and run 1");
-    expect(said[0]).toContain("temporary");
+    expect(said[0]).toContain("D-192");
     expect(said[0]).toContain("D-163");
     expect(result.capped).toBe(said[0]!);
   });
@@ -230,13 +235,17 @@ describe("what the cloud vendors are handed once capped", () => {
 describe("doctor's survey", () => {
   const build = (id: string): ExecBackend => (id === "brand-new" ? new NewBackend() : id === "claude-local" || id === "grok-local" ? localCliBackend(id) : new CliExec(VENDORS.find((v) => v.id === id)!));
   test("lists the capped and the fenced, and nothing when the dial is not loosened", () => {
-    const ids = ["claude", "codex", "brand-new", "claude-local"];
+    // gemini and kimi have no measured home (D-192), so they are capped on any kernel.
+    const ids = ["gemini", "kimi", "brand-new", "claude-local"];
     const loosened = capSurvey(ids, LOOSENED, build, SUBJECT);
-    expect(loosened.capped).toEqual(["claude", "codex", "brand-new"]);
+    expect(loosened.capped).toEqual(["gemini", "kimi", "brand-new"]);
     expect(loosened.fenced).toEqual(["claude-local"]);
     expect(capSurvey(ids, RESTRAINED, build, SUBJECT)).toEqual({ capped: [], fenced: [] });
     expect(capLine(capSurvey(ids, RESTRAINED, build, SUBJECT))).toBeUndefined();
-    expect(capLine(loosened)).toBe("capped at write/run 1 (not kernel-fenced, D-163): claude, codex, brand-new · keep the dial (fenced): claude-local");
+    expect(capLine(loosened)).toBe("capped at write/run 1 (not kernel-fenced, D-163): gemini, kimi, brand-new · keep the dial (fenced): claude-local");
+    // claude, codex and grok keep the dial exactly where this kernel can fence them.
+    const clouds = capSurvey(["claude", "codex", "grok"], LOOSENED, build, SUBJECT);
+    expect(clouds.fenced).toEqual(fenceSupport().ok ? ["claude", "codex", "grok"] : []);
     expect(capLine({ capped: [], fenced: ["claude-local"] })).toContain("capped at write/run 1 (not kernel-fenced, D-163): none");
   });
 });

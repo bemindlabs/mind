@@ -38,11 +38,13 @@ Usage:
                                         checks this machine, creates an agent,
                                         describes its soul, runs a first turn.
                                         Raises no autonomy and enables nothing.
-  mind new <name> --subject <id> [--dir <parent>]
+  mind new <name> --subject <id> [--dir <parent>] [--template blank|coding]
                                         Create an agent repository: soul,
                                         memory, consent, and a .gitignore with
                                         one line in it. Runs \`git init\` and
                                         stops there — no commit, no remote.
+                                        --template coding starts from a
+                                        software developer's soul.
   mind rebuild <dir> --subject <id> [--check]
                                         Rebuild <dir>/${DERIVED_DIR} from what git holds.
                                         --check reports fresh, stale or missing
@@ -56,6 +58,62 @@ Usage:
                                         the web Profile wizard sends): says which
                                         fields change, writes only with --yes, and
                                         only a soul that still loads.
+  mind soul tune <dir> --subject <id> [--repeat <k>] [--backend <b>] [--model <m>] [--dry-run]
+                                        One round of harness tuning (S21.5):
+                                        run the task set on the committed soul,
+                                        ask the agent's own backend for an INV
+                                        and a DOM rewrite of the role.md body
+                                        from the train failures alone (never the
+                                        expect/reject phrases or a held-out
+                                        task), keep each as a branch tune/<id>-
+                                        inv|dom made without touching the
+                                        working tree, run the same tasks on it,
+                                        and judge on the held-out set (T6; under
+                                        6 held-out tasks always keep-base).
+                                        Then a reflection (S21.6): one verdict row
+                                        per edited passage and at most one lesson,
+                                        kept as a proposal. Prints deltas, flips,
+                                        the body diff and the cost; adopts
+                                        nothing. --dry-run
+                                        builds and leak-checks the missions and
+                                        calls no model. Refused: a soul with
+                                        uncommitted edits, no held-out task, the
+                                        brake on.
+  mind soul tune lessons --subject <id> [--all]
+                                        The lessons the reflection proposed: cue,
+                                        lesson, the rows it rests on, which run.
+                                        Writes nothing.
+  mind soul tune lessons accept <runId> <dir> --subject <id>
+                                        Yours, at a terminal (no --yes): the
+                                        leak check again, then append the lesson
+                                        to <dir>/lessons.md. Mind does not commit
+                                        it. Recall indexes it and the next round's
+                                        proposers see it when its cue matches.
+  mind soul tune lessons reject <runId> --subject <id>
+                                        Yours, at a terminal: the same lesson is
+                                        not proposed again.
+  mind soul tune adopt <runId> <dir> --subject <id>
+                                        Commit the winner as the agent (never
+                                        you) with the run id and held-out
+                                        numbers; refused until the tuner has a
+                                        valid proof (below).
+  mind soul tune undo <dir> --subject <id>
+                                        Revert the last tune commit.
+  mind soul tune --selftest [--subject <id>]
+                                        Prove the tuner (S21.7): four controls
+                                        (a no-op keeps the base, a planted good
+                                        edit is adopted, planted harmful edits
+                                        are rejected, no graded text reaches the
+                                        proposer), each against a sabotaged twin
+                                        that must fail, on a throwaway agent;
+                                        no model, no network. Exit 0 only when
+                                        all behave. With --subject it writes the
+                                        proof that opens adopt, bound to this
+                                        engine's version and commit and to a
+                                        digest of the tuner's source.
+  mind soul tune proof --subject <id>
+                                        Is there a valid proof for this build,
+                                        when was it made, and if not, why not.
   mind soul apply <dir> --subject <id> [--backend a,b] [--apply]
                                         Render an identity into each backend.
                                         Prints a diff and writes nothing unless
@@ -87,9 +145,16 @@ Usage:
                                         serves nothing; \`a2a serve\` serves it.
   mind turn <dir> --subject <id> (--prompt <text> | --prompt-file <path> | --proposal <id>)
              [--backend a,b,c] [--route auto|local|cloud] [--model <m> | --model <backend>=<m>,…]
-             [--private] [--proposal <id>]
+             [--private] [--proposal <id>] [--cloud-only] [--scope worktree|machine] [--deny <path,path>]
              [--no-recall] [--no-proposals] [--recall-chars <n>] [--history-json <[{role,text}]>] [--json]
-                                        Run one turn wearing this soul. Tries
+                                        --cloud-only keeps the chain to cloud
+                                        backends and never reaches a local
+                                        model. --scope machine lets a turn that
+                                        may write (act 2+) work anywhere on
+                                        this machine except ~/.secrets, ~/.ssh,
+                                        Mind's own data and the --deny paths,
+                                        held by the kernel fence; refused
+                                        where there is no fence. Run one turn wearing this soul. Tries
                                         each backend in order until one really
                                         answers. Records one ledger line per
                                         backend that was actually handed the
@@ -474,14 +539,24 @@ Usage:
                                         operate's: 1 approves look tools only, 2
                                         also click and type; code-running tools
                                         never, and sensitive actions are held.
-  mind task new <dir> --subject <id> --goal <text> [--backend a,b] [--model <m>] [--budget-turns <n>] [--budget-minutes <n>] [--budget-tokens <n>] [--operate 0|1|2] [--allow <origin>…] [--step-minutes <n>] [--approve-within <minutes>] [--backend-wait-minutes <n>] [--detach] [--json]
+  mind task new <dir> --subject <id> --goal <text> [--backend a,b] [--model <m>] [--budget-turns <n>] [--budget-minutes <n>] [--budget-tokens <n>] [--worktree <repo> [--worktree-root <dir>] [--base <ref>] [--gate <command>]] [--operate 0|1|2] [--allow <origin>…] [--step-minutes <n>] [--approve-within <minutes>] [--backend-wait-minutes <n>] [--queue | --detach] [--json]
                                         A goal carried over several turns
                                         (D-154): a plan, then one step per turn,
                                         each an ordinary turn (ledger, dial,
                                         fence, egress, stop all apply), until it
                                         is done, the budget is spent (default
                                         12 turns, 30 active minutes, no token
-                                        limit) or it is stopped. --operate 1|2
+                                        limit) or it is stopped. --worktree gives it
+                                        a git worktree of its own on feat/<task>
+                                        (from --base, default main) as its working
+                                        directory; a person removes it after the merge.
+                                        --gate "<command>" (with --worktree) runs
+                                        that command, no shell, in the worktree
+                                        when the bot says done: red and it is told
+                                        and works again (three tries); green and
+                                        the task ends with a request for you to
+                                        merge, shown by \`task show\`. Mind never
+                                        merges. --operate 1|2
                                         gives it a browser on --allow's origins
                                         (claude or claude-local only, D-157),
                                         never above the dial, and each step has
@@ -509,7 +584,70 @@ Usage:
                                         asked). For a task to outlive the login
                                         and start after a reboot, the owner
                                         enables lingering once: loginctl
-                                        enable-linger <user>.
+                                        enable-linger <user>. --queue stores a
+                                        task without starting it.
+  mind grant give <dir> --subject <id> --category send|delete|terms|payment --origin <origin> --for <90m|24h|7d> [--task <id>]
+  mind grant list <dir> --subject <id> [--json]
+  mind grant revoke <grant> <dir> --subject <id>
+  mind grant report <dir> --subject <id> [--json]
+                                        Standing grants (S22.11): answer ahead of
+                                        time the held browser actions of a task
+                                        (D-156) of this bot, on one origin, until
+                                        a time — send and terms at most 7 days,
+                                        delete and payment 24 hours, payment for
+                                        one named task. Given by you at a
+                                        terminal, never from inside a turn;
+                                        revoked at once; switched off by \`mind
+                                        stop\`. Never a credential (D-160), and
+                                        never personal data leaving this machine
+                                        (I-6). \`report\` counts the requests they
+                                        answered from the record.
+  mind review <dir> --subject <id> (--author a[,b] | --task <id>) [--repo <path>] [--base <ref>] [--reviewers a,b,c] [--context <text>] [--json]
+                                        A change reviewed by a backend that did
+                                        not write it (S22.7): the diff against
+                                        --base (default main) goes, as an
+                                        ordinary turn, to the first usable
+                                        reviewer of another vendor than every
+                                        author (claude-local is claude's). It
+                                        answers approve or changes with findings.
+                                        Exit 0 approved, 7 changes, 3 no reviewer
+                                        different from the author. A verdict is
+                                        an opinion, not a gate. Refused where
+                                        the dial lets a turn act, or the brake
+                                        is on. The diff leaves this machine like
+                                        any prompt.
+  mind dispatch table <dir> --subject <id> [--from <id,id>] [--kind <k>] [--json]
+  mind dispatch suggest <dir> --subject <id> --kind <k> [--from <id,id>] [--candidates a,b] [--min-n <n>] [--explore <0..1>] [--json]
+  mind dispatch review <dir> --subject <id> [--from <id,id>] [--candidates a,b] [--min-n <n>] [--json]
+  mind dispatch watch <dir> --subject <id> [--from <id,id>] [--update] [--json]
+                                        What finished tasks say (S22.14): every
+                                        task that ends leaves one metadata line
+                                        (kind, backend and the model its own
+                                        output named, turns, tokens, time, what
+                                        a review said) and \`table\` counts them
+                                        per backend, model and kind, always with
+                                        n. \`suggest\` ranks backends for a kind:
+                                        by rate once a backend has --min-n (5)
+                                        outcomes for the current model, sampling
+                                        the least-sampled otherwise (--explore,
+                                        20% of tasks); resting backends last.
+                                        \`review\` proposes routes and changes
+                                        nothing. \`watch\` reports a backend whose
+                                        model changed (S22.15): the new model
+                                        starts at n=0, the old one's outcomes are
+                                        a prior; --update records it as read.
+                                        \`task new --kind <k> --backend auto\`
+                                        uses the ranking once. A rate is a
+                                        direction, not a score of skill.
+  mind fleet check <fleet.toml>         Read a fleet roster and say whether it loads: one bot per
+                                        model and per subject, cloud backends
+                                        only, no lead. Starts nothing and sends
+                                        nothing (S22.5).
+  mind fleet dial <fleet.toml> --profile <worktree|read-only> [--only <bot>] [--dry-run]
+                                        Set the dial of every bot of a roster from
+                                        a profile, through autonomy.md. Level 3
+                                        still needs each category's own
+                                        confirmation; reach stays capped at 2.
   mind task list <dir> --subject <id> [--json]
                                         Every task of this agent, newest first.
   mind task show <task> <dir> --subject <id> [--json]
@@ -518,6 +656,16 @@ Usage:
                                         "interrupted" means its runner died;
                                         "parked", that it was set aside (its
                                         backend was not ready in time).
+  mind task tick <dir> --subject <id> [--max <n>] [--dry-run] [--json]
+                                        Carry on every task that is interrupted
+                                        (its runner is gone) or parked until a
+                                        time that has come (its backends were
+                                        resting, S22.10), up to --max (default 3)
+                                        oldest first; a task that has had 20
+                                        runners is left to you. Meant for your own
+                                        timer: Mind starts none. Refused while the
+                                        brake is on; --dry-run only says what it
+                                        would do.
   mind task stop <task> <dir> --subject <id> [--json]
                                         Stop it: no next step starts, the step
                                         running now is ended like mind stop
@@ -558,7 +706,7 @@ Usage:
   mind triggers schedule <dir> --subject <id> [--every <5m>]
                                         Print a systemd timer and a cron line
                                         that call tick. Installs nothing.
-  mind web <dir> --subject <id> [--port <n>] [--host <addr>] [--name <host,…>] [--https] [--key-file <path>] [--qr]
+  mind web <dir> --subject <id> [--port <n>] [--host <addr>] [--name <host,…>] [--https] [--key-file <path>] [--qr] [--fleet <fleet.toml>]
              [--backend a,b] [--model <m> | --model <backend>=<m>,…]
                                         A page for one agent in your browser:
                                         what it may do, what waits for your
@@ -568,6 +716,12 @@ Usage:
                                         the terminal. Loopback, with a link key.
                                         --qr prints the link as a code for the
                                         phone app (it holds the key).
+                                        --fleet <fleet.toml> adds a Fleet section
+                                        (S22.9): each bot's status, backend and
+                                        spend, each backend's rest, and three
+                                        buttons — rest, wake, stop a bot. No
+                                        words of any prompt are shown, and
+                                        nothing there starts a turn.
                                         On a tailnet address it also answers to
                                         this machine's tailnet names; --name
                                         adds others. --https: behind
@@ -712,12 +866,49 @@ Usage:
   mind persona adopt <dir> --subject <id> [--draft <id>] [--yes]
                                         Write only the yeses into role.md and
                                         person.md; the soul must still load.
-  mind eval <dir> --subject <id> [--set <file>] [--only <id,…>] [--backend <b>] [--model <m>] [--json]
+  mind eval <dir> --subject <id> [--set <file>] [--only <id,…>] [--repeat <k>]
+            [--split train|heldout|all] [--compare <git-ref> [--base-run <runId>]]
+            [--no-record] [--keep-answers] [--backend <b>] [--model <m>] [--json]
                                         Run the job's task set (evals.md, at
                                         least 20 real tasks) with the soul alone
                                         and with recall, grade each answer by
                                         its phrases, and say which kinds of work
                                         it cannot do yet. Turns held at level 1.
+                                        --repeat k (1-10) asks each task k times
+                                        and names the flaky ones. Each run is
+                                        kept in personal/evals/ (outside git)
+                                        with the soul's git tree, a dirty flag
+                                        and a hash of its files; answers only
+                                        with --keep-answers. --split runs one
+                                        side of the train/held-out split (tasks
+                                        say split = "heldout", evals@2); the
+                                        report gives each side and flags a
+                                        held-out set under 6 as too small to
+                                        judge. --compare <ref> also answers with
+                                        the soul at that git ref, records both
+                                        runs, and prints per-task changes and
+                                        the T6 verdict (adopt / keep-base);
+                                        nothing is adopted. --base-run reuses
+                                        a recorded run as the base and asks
+                                        only the candidate.
+  mind eval code <agent-dir> --subject <id> --set <dir> --backend <a,b,…> [--only <id,…>] [--json]
+                                        Does each backend get a small repository's
+                                        gate green? Each task is a copy with a red
+                                        gate; green needs the gate to pass and the
+                                        protected files untouched. n beside every
+                                        rate. Real turns: they leave the machine
+                                        for a cloud backend (synthetic fixtures).
+  mind eval runs [<dir>] --subject <id> [--json]
+                                        The recorded runs, newest first: soul,
+                                        backend/model, pass rate per mode.
+  mind eval --compare-runs <runA> <runB> --subject <id> [--json]
+                                        Compare two recorded runs (A the base)
+                                        without asking anything; refused unless
+                                        both answered the same task set.
+  mind eval split <dir> --subject <id> --heldout <n> [--seed <s>] [--write]
+                                        Propose n held-out tasks, stratified by
+                                        kind and fixed by the seed; --write puts
+                                        them in evals.md (yours to commit).
   mind basis record <owner|consent|contract|legitimate-interest|legal-obligation> --subject <id> --uses <memory,persona,fine-tune> [--expires YYYY-MM-DD|never] [--approved-by <name>] [--note <text>]
                                         Record on what basis a subject's data
                                         may come in, and for which uses — typed

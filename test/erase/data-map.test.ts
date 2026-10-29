@@ -32,7 +32,7 @@ import { collectionFor } from "../../src/memory/collection.ts";
 import { ragDirFor } from "../../src/memory/marker.ts";
 import { subjectId } from "../../src/types.ts";
 import { LOCAL_BACKENDS } from "../../src/exec/local-cli.ts";
-import { localCliHomeDir } from "../../src/erase/local-cli-homes.ts";
+import { cloudHomeDir, localCliHomeDir } from "../../src/erase/local-cli-homes.ts";
 
 const SUBJECT = subjectId("example");
 
@@ -56,6 +56,9 @@ describe("S7.1 — every place Mind keeps a subject's data is in the erase plan"
         "rag marker (D-038)": ragDirFor(env.home, env.env, SUBJECT),
         "personal directory (capture, proposals, egress)": personal.path,
         "the agent's signing key (S15.8, D-108)": identityDirFor(env, SUBJECT),
+        "the claude home of Mind's own for this subject (D-192)": cloudHomeDir(env, "claude", SUBJECT),
+        "the codex home of Mind's own for this subject (D-192)": cloudHomeDir(env, "codex", SUBJECT),
+        "the grok home of Mind's own for this subject (D-192)": cloudHomeDir(env, "grok", SUBJECT),
       };
       const plan = await planErase(env, {
         subject: SUBJECT,
@@ -148,6 +151,9 @@ describe("the data map is one list, and erase and deploy read the same one", () 
       basis: "copied",
       personal: "copied",
       identity: "copied",
+      "cloud-claude": "stays",
+      "cloud-codex": "stays",
+      "cloud-grok": "stays",
       ledger: "copied",
     });
     // Pure: the same roots, the same paths — no filesystem asked. `/h` exists nowhere.

@@ -1,6 +1,6 @@
 {
   "name": "mind",
-  "version": "0.11.1",
+  "version": "0.11.5",
   "description": "Mind — a CLI and web console that builds AGI agents you own: a soul of its own, memory recalled from your notes and documents, autonomy with a kill switch, A2A and Telegram, one git repo per agent, local-first.",
   "type": "module",
   "license": "Apache-2.0",
@@ -26,6 +26,7 @@
     "e2e:memory-ask": "bun test ./test/e2e/memory-ask.e2e.ts --timeout 900000",
     "e2e:browser": "bun test ./test/e2e/browser.e2e.ts --timeout 900000",
     "e2e:tasks": "bun test ./test/e2e/tasks.e2e.ts --timeout 1800000",
+    "e2e:chat": "bun test ./test/e2e/chat.e2e.ts --timeout 900000",
     "e2e:always-on": "bun test ./test/e2e/always-on.e2e.ts --timeout 1800000",
     "release:check": "test -n \"$MIND_RELEASE_MODEL\" || { echo \"release:check needs MIND_RELEASE_MODEL=<local ollama model> — the identity firewall (S6.4) is judged against a real model, and a release without that judgement does not ship (D-062)\" >&2; exit 1; } && bun run typecheck && bun test && bun run coverage && MIND_REAL_FIREWALL=1 MIND_REAL_MODEL=\"$MIND_RELEASE_MODEL\" bun test test/soul/firewall.real.test.ts"
   },

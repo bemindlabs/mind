@@ -21,12 +21,14 @@
 
 import { VERSION } from "../src/version.ts";
 import { runFenceHelper, runFenceSupervisor } from "../src/exec/fence.ts";
+import { runDeleteCheck } from "../src/exec/delete-tripwire.ts";
 import { refusal } from "../src/spawn.ts";
 import { expandAs } from "./as.ts";
 import { cmdA2A } from "./commands/a2a.ts";
 import { cmdChat } from "./commands/chat.ts";
 import { cmdPersona } from "./commands/persona.ts";
 import { cmdEval } from "./commands/eval.ts";
+import { cmdTune } from "./commands/tune.ts";
 import { cmdBasis } from "./commands/basis.ts";
 import { cmdAutonomy } from "./commands/autonomy.ts";
 import { cmdBackends } from "./commands/backends.ts";
@@ -46,6 +48,10 @@ import { cmdRebuild } from "./commands/rebuild.ts";
 import { cmdSetup } from "./commands/setup.ts";
 import { cmdSoul } from "./commands/soul.ts";
 import { cmdStop } from "./commands/stop.ts";
+import { cmdDispatch } from "./commands/dispatch.ts";
+import { cmdFleet } from "./commands/fleet.ts";
+import { cmdGrant } from "./commands/grant.ts";
+import { cmdReview } from "./commands/review.ts";
 import { cmdTask } from "./commands/task.ts";
 import { cmdTriggers } from "./commands/triggers.ts";
 import { cmdTurn } from "./commands/turn.ts";
@@ -57,6 +63,7 @@ import { asksForHelp, helpFor } from "./shared.ts";
 import { USAGE } from "./usage.ts";
 
 async function main(rawArgv: readonly string[]): Promise<number> {
+  if (rawArgv[0] === "__delete-check") return runDeleteCheck(rawArgv.slice(1), process.cwd());
   // A fixed internal child of `__fence`, with no command argv of its own. It
   // owns the seccomp listener so the filtered vendor never does.
   if (rawArgv[0] === "__fence-supervisor") {
@@ -146,7 +153,7 @@ async function main(rawArgv: readonly string[]): Promise<number> {
       return cmdRebuild(rest);
 
     case "soul":
-      return cmdSoul(rest);
+      return cmdSoul(rest, cmdTune);
 
     case "worn":
       return cmdWorn(rest);
@@ -214,6 +221,18 @@ async function main(rawArgv: readonly string[]): Promise<number> {
     case "task":
       return cmdTask(rest);
 
+    case "fleet":
+      return cmdFleet(rest);
+
+    case "grant":
+      return cmdGrant(rest);
+
+    case "dispatch":
+      return cmdDispatch(rest);
+
+    case "review":
+      return cmdReview(rest);
+
     case "help":
     case "--help":
     case "-h":
@@ -233,7 +252,7 @@ const code = await main(process.argv.slice(2));
 // The hidden fence helper is not a public command and, on a setup failure,
 // must do nothing except refuse the turn — especially not make an update
 // request outside the boundary it failed to install.
-if (process.argv[2] !== "__fence" && process.argv[2] !== "__fence-supervisor") {
+if (process.argv[2] !== "__fence" && process.argv[2] !== "__fence-supervisor" && process.argv[2] !== "__delete-check") {
   await autoCheck(process.argv.slice(2));
 }
 process.exitCode = code;

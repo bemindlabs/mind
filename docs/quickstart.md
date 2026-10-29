@@ -41,17 +41,17 @@ autonomy stays at the default, **1: it proposes and does not do**.
 Follow [README → Install](../README.md#install): get cosign, then run `install.sh`. In short:
 
 ```bash
-curl -fsSLO https://github.com/bemindlabs/mind/releases/download/v0.11.1-alpha/install.sh
+curl -fsSLO https://github.com/bemindlabs/mind/releases/download/v0.11.3-alpha/install.sh
 sh install.sh
 mind --version
 ```
 
-The release is called `v0.11.1-alpha` (a pre-release; there is no tag `v0.11.1` without the suffix, and a download URL that says `v0.11.1`
+The release is called `v0.11.3-alpha` (a pre-release; there is no tag `v0.11.3` without the suffix, and a download URL that says `v0.11.3`
 answers `curl: (22) ... 404`). With no `MIND_VERSION` set, `install.sh` installs the newest release, pre-releases included,
-which is the latest; `MIND_VERSION=v0.11.1-alpha sh install.sh` pins it. It takes a few seconds and prints `checksum ok`,
-`signature ok (cosign, the release workflow)` and `installed …`. `mind --version` then prints `0.11.1`: the binary
-does not carry the `-alpha` suffix, and `mind update --check` says `mind 0.11.1 is the newest release (latest published:
-v0.11.1-alpha)`. If `~/.local/bin` is not on your `PATH`, `install.sh` says so; add it.
+which is the latest; `MIND_VERSION=v0.11.3-alpha sh install.sh` pins it. It takes a few seconds and prints `checksum ok`,
+`signature ok (cosign, the release workflow)` and `installed …`. `mind --version` then prints `0.11.3`: the binary
+does not carry the `-alpha` suffix, and `mind update --check` says `mind 0.11.3 is the newest release (latest published:
+v0.11.3-alpha)`. If `~/.local/bin` is not on your `PATH`, `install.sh` says so; add it.
 
 ## 3. A small local model
 
@@ -418,7 +418,7 @@ route is broken, or when a LiteLLM master key lies where a program of yours can 
 | `no triggers.md in <dir> — nothing runs by itself` and the file exists in `soul/` | the `triggers` commands were given the repository root | Give them the `soul/` directory (step 8b). |
 | `mind: nothing was sent — the working directory … contains the agent's repo … and this turn may write` | you raised write or run to 2 and started the turn inside the agent's repository, Mind's own directories, or a directory with credentials in it | Start the turn from a scratch directory. (Nothing on this page raises the dial.) |
 | `install.sh: a verified signature is required … cosign is not installed` | v0.11.0 and later need cosign | [README → Install](../README.md#1-get-cosign-once). |
-| `curl: (22) The requested URL returned error: 404` on `install.sh` | the URL names a tag that does not exist (`v0.11.1`) | Use `v0.11.1-alpha` (step 2). |
+| `curl: (22) The requested URL returned error: 404` on `install.sh` | the URL names a tag that does not exist (`v0.11.3`) | Use `v0.11.3-alpha` (step 2). |
 | `Mind wrote vectors for this subject to … and cannot reach it now` (from `mind erase`) | a vector store was reached once and a marker says Mind wrote there, and it does not answer now | Start the store and run it again, or, if it is gone for good, pass `--vectors-not-reached <the collection name the message prints>`; the certificate then says `not reached` and is not `erased-and-verified`. |
 
 Still stuck? Say what you ran, what you saw, and `mind --version`, in an

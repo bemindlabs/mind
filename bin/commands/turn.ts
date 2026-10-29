@@ -26,6 +26,7 @@ import {
 import { judgeInput, judgeLayer, loadLexicon, recordBlocked, resolveJudgeMode, screen } from "../../src/egress/index.ts";
 import { browserOnly } from "../../src/decide/effective.ts";
 import { pendingAnywhere } from "../../src/task/screen.ts";
+import { fileHealth, healthPath } from "../../src/exec/health.ts";
 import { RecordingExec, canAppend, modelOfTurn, type RecordingOptions } from "../../src/ledger/index.ts";
 import { loadPrices } from "../../src/pricing/table.ts";
 import { printable } from "../../src/identity/shapes.ts";
@@ -55,7 +56,10 @@ import {
 } from "../../src/decide/index.ts";
 import { conversationBlock, forCloud, parseHistory, type Exchange } from "../../src/exec/conversation.ts";
 import { asLocal, LOCAL_CLI_SEES_PERSONAL } from "../../src/exec/local.ts";
-import { engineNotDumpable, fenceSupport, notDumpableNote } from "../../src/exec/fence.ts";
+import { SYSTEM_READ_DIRS, engineNotDumpable, fenceSupport, notDumpableNote } from "../../src/exec/fence.ts";
+import { SCOPES, machineNotice, machineVerdict, type Scope } from "../../src/exec/machine-scope.ts";
+import { guardedGit, protectedBranchAt } from "../../src/task/worktree.ts";
+import { cloudMembers, cloudOnlyProblem, cloudOnlyRequested } from "../../src/exec/cloud-only.ts";
 import { chooseRoute, parseRoutePreference, type Route } from "../../src/exec/route.ts";
 import { isLocalCliId } from "../../src/exec/local-cli.ts";
 import { CappedExec, HELD_AT_ONE_TASK } from "../../src/exec/cap.ts";
@@ -72,7 +76,7 @@ import {
   type Attachment,
 } from "../../src/memory/index.ts";
 import { isKnownBackend, loadSoul, renderSoul, resolveSoulDir, sha256 } from "../../src/soul/index.ts";
-import { isLocalBackend } from "../../src/web/turninfo.ts";
+import { isLocalBackend, routeSentence } from "../../src/web/turninfo.ts";
 import { readBrowserRecords } from "../../src/browser/store.ts";
 import { wiringDir } from "../../src/browser/paths.ts";
 import type { BrowserHands } from "../../src/browser/mcp-config.ts";
@@ -82,7 +86,7 @@ import { DIAL_REFUSED, decideDial, dialEnv, dialLine, heldNote } from "../dial.t
 import { triageIfEnabled } from "../triage.ts";
 import { dimErr, ledgerEnv, parseArgs, report, usageError } from "../shared.ts";
 import { homedir } from "node:os";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { isatty } from "node:tty";
 import {
   appendRecord,
@@ -101,18 +105,12 @@ import {
  * command is entitled to without asking for it (I-4, I-6).
  */
 function routeLine(result: TurnResult): string {
-  const ms = result.evidence.durationMs;
-  const took = ms === undefined ? "?" : `${(ms / 1000).toFixed(1)}s`;
-  const trail = fallbackTrail(result.evidence.raw);
-  const answered = result.confidence === "confirmed" || result.confidence === "partial";
-
-  if (!answered) {
-    return `no backend answered · ${took}${trail === undefined ? "" : ` · ${trail}`}`;
-  }
-  return (
-    `answered by ${result.backend} · identity arrived as ${result.identityStrength} · ${took}` +
-    (trail === undefined ? "" : ` · missed: ${trail}`)
-  );
+  return routeSentence({
+    answeredBy: result.confidence === "confirmed" || result.confidence === "partial" ? result.backend : null,
+    identity: result.identityStrength,
+    durationMs: result.evidence.durationMs ?? null,
+    trail: fallbackTrail(result.evidence.raw) ?? null,
+  });
 }
 
 /**
@@ -132,7 +130,7 @@ async function readPromptFrom(path: string): Promise<string> {
 const TURN_USAGE =
   "usage: mind turn <dir> --subject <id> (--prompt <text> | --prompt-file <path> | --proposal <id>) " +
   "[--backend a,b,c] [--route auto|local|cloud] [--model <m> | --model <backend>=<m>,…] [--private] [--proposal <id>] [--no-recall] [--no-proposals] " +
-  "[--recall-chars <n>] [--history-json <[{role,text}]>] [--task <id>] [--json]";
+  "[--cloud-only] [--scope worktree|machine] [--deny <path,path>] [--recall-chars <n>] [--history-json <[{role,text}]>] [--task <id>] [--json]";
 
 /**
  * The approval `--proposal` names, or the exit code that stops the turn.
@@ -367,7 +365,7 @@ function counted<T extends { readonly id: string; run: (request: TurnRequestLike
  * list to tell `--private` from a flag that swallows the next word. See
  * {@link import("./soul.ts").SOUL_CHECK_BOOLEANS} for why there is one copy.
  */
-export const TURN_BOOLEANS: readonly string[] = ["json", "private", "no-recall", "no-proposals"];
+export const TURN_BOOLEANS: readonly string[] = ["json", "private", "no-recall", "no-proposals", "cloud-only"];
 
 /**
  * `mind turn` — spend one turn wearing a soul, on whichever backend answers.
@@ -492,6 +490,22 @@ async function turnOnce(argv: readonly string[], took: Took): Promise<number> {
       return usageError(`unknown backend ${JSON.stringify(name)}`);
     }
   }
+  // S22.4 (D-197) — a fleet bot is a cloud model: the chain may hold only cloud backends, and no route reaches a local one.
+  // The policy only narrows. Asked here, before anything is read or sent, and once more on the chain that is built.
+  const cloudOnly = cloudOnlyRequested(options.has("cloud-only"), readEnv("CLOUD_ONLY", process.env));
+  if (cloudOnly) {
+    if (routePreference === "local") return usageError("--route local cannot go with cloud-only. Nothing was sent.");
+    const problem = named.length > 0 ? cloudOnlyProblem(named) : undefined;
+    if (problem !== undefined) return usageError(`${problem}. Nothing was sent.`);
+  }
+  // S22.8 (D-197) — how far a turn that may write can reach: the working directory (the usual) or the whole machine
+  // but the red lines. `--deny` adds red lines of the owner's; it only narrows, and only goes with `machine`.
+  const scopeRaw = options.get("scope") ?? "worktree";
+  if (!(SCOPES as readonly string[]).includes(scopeRaw)) return usageError("--scope must be worktree or machine");
+  const scope = scopeRaw as Scope;
+  const deny = (options.get("deny") ?? "").split(",").map((part) => part.trim()).filter((part) => part !== "");
+  if (deny.length > 0 && scope !== "machine") return usageError("--deny only goes with --scope machine. Nothing was sent.");
+  for (const path of deny) if (!isAbsolute(path)) return usageError(`--deny takes absolute paths: ${JSON.stringify(path)}. Nothing was sent.`);
   // D-142 — which step `--model` is for, and whether that step can take it, asked before anything is read or
   // sent. The default chain is checked as the usual one: every chain `turn` builds by itself has ollama in it,
   // and the local CLIs it may put first take no model, so no route can make a model valid here and not below.
@@ -567,13 +581,41 @@ async function turnOnce(argv: readonly string[], took: Took): Promise<number> {
   // D-163 (Q4-D2, second rule): a turn that may write is not started in the agent's repo, Mind's state,
   // ~/.secrets or ~/.ssh, nor in a directory that holds or lies inside one of them. Refused, not downgraded —
   // and for a fenced backend too, because the fence makes the working directory writable.
+  // S22.8: under `scope = machine` the "contains" half is not asked, because the kernel holds the red lines instead
+  // (`src/exec/machine-scope.ts`) — and the turn is refused where it cannot.
+  let machine: TurnRequestLike["machine"];
   if (restraint.loosened) {
     const dialHome = dialEnv();
-    const refusedDir = workdirRefusal(process.cwd(), protectedPlaces(resolve(dir), dialHome.home, dialHome.env));
+    const places = protectedPlaces(resolve(dir), dialHome.home, dialHome.env);
+    const refusedDir = workdirRefusal(process.cwd(), places, scope !== "machine");
     if (refusedDir !== undefined) {
       console.error(`mind: nothing was sent — ${refusedDir}`);
       return DIAL_REFUSED;
     }
+    if (scope === "machine") {
+      const support = fenceSupport();
+      if (!support.ok) {
+        console.error(`mind: nothing was sent — scope machine needs the kernel fence to hold its red lines, and this kernel cannot give it: ${support.reason}`);
+        return DIAL_REFUSED;
+      }
+      // S22.8 AC3: no work on main. Only the directory the turn starts in is looked at (a bot that `cd`s elsewhere is not
+      // followed); `mind task new --worktree` is how a task gets a checkout of its own.
+      const onMain = await protectedBranchAt(process.cwd(), guardedGit);
+      if (onMain !== undefined) {
+        console.error(`mind: nothing was sent — scope machine does not start on ${onMain} (one worktree per task, never work on ${onMain}): start from a worktree on its own branch, which \`mind task new --worktree <repo>\` makes.`);
+        return DIAL_REFUSED;
+      }
+      const redLines = [...places.map((place) => place.path), ...deny];
+      const verdict = machineVerdict(redLines, SYSTEM_READ_DIRS);
+      if (!verdict.ok) {
+        console.error(`mind: nothing was sent — scope machine cannot be planned: ${verdict.reason}`);
+        return DIAL_REFUSED;
+      }
+      machine = { grants: verdict.plan.grants, home: dialHome.home, redLines };
+      console.error(dimErr(machineNotice(verdict.plan, redLines)));
+    }
+  } else if (scope === "machine") {
+    console.error(dimErr("mind: scope machine changes nothing here: this turn does not act (act below 2), so it writes nothing"));
   }
   // Review of PR #24, finding 2: a turn that can run commands does not start while one of this agent's tasks is
   // paused on the owner's answer — such a turn could reach the answer itself.
@@ -632,7 +674,7 @@ async function turnOnce(argv: readonly string[], took: Took): Promise<number> {
   const localReadyNow = fenceSupport().ok && localReady.some((available) => available.ok);
   // This explicit constant is the D-123 door: `auto` may route held pieces to
   // a local CLI only while the complete address/transport fence is enabled.
-  const localAvailable = LOCAL_CLI_SEES_PERSONAL && localReadyNow;
+  const localAvailable = LOCAL_CLI_SEES_PERSONAL && localReadyNow && !cloudOnly;
   const route: Route = named.length > 0
     ? {
         prefer: named.some(isLocalCliId) ? "local" : "cloud",
@@ -646,10 +688,18 @@ async function turnOnce(argv: readonly string[], took: Took): Promise<number> {
       });
   const backendIds = named.length > 0
     ? named
-    : route.prefer === "local"
-      ? [...LOCAL_BACKENDS, ...PHASE_A_BACKENDS]
-      : [...PHASE_A_BACKENDS];
+    : cloudOnly
+      ? [...cloudMembers(PHASE_A_BACKENDS)]
+      : route.prefer === "local"
+        ? [...LOCAL_BACKENDS, ...PHASE_A_BACKENDS]
+        : [...PHASE_A_BACKENDS];
+  if (cloudOnly) {
+    // The twin of the check above, on the chain that will really run: a route or a default added later cannot slip a local model in.
+    const problem = cloudOnlyProblem(backendIds);
+    if (problem !== undefined) return usageError(`${problem}. Nothing was sent.`);
+  }
   console.error(dimErr(`mind: route: ${route.reason}`));
+  if (cloudOnly) console.error(dimErr(`mind: cloud-only: the chain is ${backendIds.join(", ")}; no local model is tried`));
   // D-142 — each step's own model. A model belongs to the backend it was chosen for: `backend()` binds it there,
   // and no other step of the chain sees it. Checked above against the usual chain; routed here on the real one.
   const routed = routeModels(modelRaw, backendIds);
@@ -697,6 +747,7 @@ async function turnOnce(argv: readonly string[], took: Took): Promise<number> {
   const cloudSystem = compose(cloudAttachment, conversationBlock(cloudHistory.kept, cloudHistory.held));
   const writeFailures: Error[] = [];
   const turnId = crypto.randomUUID();
+  const lineIds: string[] = [];
   // S15.9 — the price tables in force as this turn begins. An owner's file that
   // cannot be used is said here, once, and every line of this turn is recorded
   // as not charged rather than priced at a default the owner meant to replace.
@@ -711,10 +762,18 @@ async function turnOnce(argv: readonly string[], took: Took): Promise<number> {
   const recording: RecordingOptions = {
     ledger,
     turnId,
-    newId: () => crypto.randomUUID(),
+    // Each line's id is kept, in order: the last one is the line of the backend that answered (or the last one tried), and
+    // `--json` names it as `entry` so a caller can find this turn in `ledger show` (the web page, the app).
+    newId: () => {
+      const lineId = crypto.randomUUID();
+      lineIds.push(lineId);
+      return lineId;
+    },
     content: options.has("private") ? "withheld" : "full",
     // Replaced per backend below: the model each one runs by construction (null for a vendor CLI, D-142).
     model: null,
+    // S22.8: the line says when the turn was allowed to work anywhere on the machine but the red lines.
+    ...(machine === undefined ? {} : { scope: "machine" as const }),
     prices,
     // The soul text itself is in git; the hash is enough to say which version
     // was worn without keeping a second copy out here to delete later. Taken
@@ -795,6 +854,8 @@ async function turnOnce(argv: readonly string[], took: Took): Promise<number> {
           : prepared;
       });
     }),
+    // S22.2 (D-197): a backend whose quota is gone is skipped until it can answer again.
+    fileHealth(healthPath(ledger.home, ledger.env)),
   );
 
   // S5.2 (D-144) — the approval is claimed **here**, as the last step before
@@ -831,7 +892,8 @@ async function turnOnce(argv: readonly string[], took: Took): Promise<number> {
 
   // S5.2 AC4 (D-043) — a turn allowed to act reports what it changed before
   // it ends. The snapshot is only taken when the vendor may write at all.
-  const before = effective.act >= 2 ? await snapshotTree(workdir) : undefined;
+  // S22.8: not under `scope = machine`: the tree to compare is the machine, and a walk that stops at the cap says nothing.
+  const before = effective.act >= 2 && machine === undefined ? await snapshotTree(workdir) : undefined;
 
   const sentAt = new Date();
   let result: TurnResult;
@@ -842,6 +904,7 @@ async function turnOnce(argv: readonly string[], took: Took): Promise<number> {
       system,
       restraint,
       ...(browser === undefined ? {} : { browser }),
+      ...(machine === undefined ? {} : { machine }),
       ...(task === undefined ? {} : { timeoutMs: stepTimeoutMs(task) }),
     });
   } finally {
@@ -882,6 +945,13 @@ async function turnOnce(argv: readonly string[], took: Took): Promise<number> {
   for (const note of notes) console.error(`mind: ${note}`);
   // D-163: already printed when the turn was capped; kept in `notes` so the page and the app show it too.
   if (result.capped !== undefined) notes.push(result.capped);
+  // D-192: printed before the turn (F4); kept here for the page and the app. A login the turn could not hand
+  // back is said now, because it is only known now.
+  if (result.unfenced !== undefined) notes.push(result.unfenced);
+  if (result.login !== undefined) {
+    console.error(`mind: ${result.login}`);
+    notes.push(result.login);
+  }
   // `--no-proposals`: a measurement (`mind eval`) must not leave work in the owner's list —
   // what the agent would have asked is still printed, just not filed.
   const filed = (effective.act === 1 || result.capped !== undefined) && answered && task === undefined && !options.has("no-proposals") ? await fileAgentAsks(id, turnId, result.text, loaded.soul.person.inherits_from) : [];
@@ -896,6 +966,8 @@ async function turnOnce(argv: readonly string[], took: Took): Promise<number> {
           ...result,
           // The id the ledger line carries: a task's step records it, which is the link between the two (D-154).
           turn: turnId,
+          // The ledger line that holds this turn's answer — the id `recent` and `/api/turn-detail` use. Null when no line was written.
+          entry: lineIds.at(-1) ?? null,
           task: task?.id ?? null,
           route: routeLine(result),
           // S12.4 — who handled this turn, so a caller (the web page) can say it

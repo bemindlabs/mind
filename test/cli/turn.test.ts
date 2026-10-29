@@ -30,7 +30,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { barePath, BUN, expectNoVendorOn } from "../support/bare-path.ts";
 import { serveOllama } from "../support/stub-ollama.ts";
 import { EGRESS_NOTICE_PREFIX } from "../../src/exec/egress.ts";
@@ -73,16 +73,19 @@ const systemFlag = argv.indexOf("--append-system-prompt");
 const system = systemFlag === -1 ? "" : (argv[systemFlag + 1] ?? "");
 // D-142: every argv this stub was handed, one JSON line per run, under the temporary HOME the turn gave it.
 require("node:fs").appendFileSync((process.env["HOME"] ?? ".") + "/argv-${name}.jsonl", JSON.stringify(argv) + "\\n");
-const silentHere = (process.env["MIND_STUB_SILENT"] ?? "").split(",").includes("${name}");
-const mode = silentHere ? "silent" : (process.env["MIND_STUB_MODE"] ?? "correct");
+// A fenced vendor inherits no environment (D-192), so the switches are also left beside the stub, which it can read.
+const fileEnv = (() => { try { return JSON.parse(require("node:fs").readFileSync(import.meta.dir + "/stub-env.json", "utf8")); } catch { return {}; } })();
+const stubEnv = (name) => process.env[name] ?? fileEnv[name];
+const silentHere = (stubEnv("MIND_STUB_SILENT") ?? "").split(",").includes("${name}");
+const mode = silentHere ? "silent" : (stubEnv("MIND_STUB_MODE") ?? "correct");
 // D-142: the per-model block claude and grok print, as measured — claude keys it by the dated id an alias
 // resolved to and puts the canonical name inside; grok keys it by the id it sent — with counts every part of
 // which is printed, so the turn can be priced.
 const modelAt = argv.indexOf("--model");
 const asked = modelAt === -1 ? undefined : argv[modelAt + 1];
-const resolve = JSON.parse(process.env["MIND_STUB_RESOLVE"] ?? "{}");
-const ran = asked === undefined ? process.env["MIND_STUB_DEFAULT_MODEL"] : (resolve[asked] ?? asked);
-const report = process.env["MIND_STUB_REPORT"] === "1" && ran !== undefined
+const resolve = JSON.parse(stubEnv("MIND_STUB_RESOLVE") ?? "{}");
+const ran = asked === undefined ? stubEnv("MIND_STUB_DEFAULT_MODEL") : (resolve[asked] ?? asked);
+const report = stubEnv("MIND_STUB_REPORT") === "1" && ran !== undefined
   ? {
       modelUsage: "${name}" === "claude"
         ? { [ran + "-20260901"]: { inputTokens: 100, outputTokens: 10, canonicalModel: ran } }
@@ -150,11 +153,17 @@ interface RunOptions {
   readonly ollama?: string;
   /** More for the child's environment — the stubs' D-142 switches. */
   readonly env?: Readonly<Record<string, string>>;
+  /** Where the turn starts; the repository root unless a test is about the directory itself. */
+  readonly cwd?: string;
 }
 
 async function run(home: string, args: readonly string[], options: RunOptions) {
+  await writeFile(
+    join(home, "bin", "stub-env.json"),
+    JSON.stringify({ ...(options.stubMode === undefined ? {} : { MIND_STUB_MODE: options.stubMode }), ...options.env }),
+  );
   const child = Bun.spawn([BUN, "run", BIN, ...args], {
-    cwd: ROOT,
+    cwd: options.cwd ?? ROOT,
     env: {
       HOME: home,
       PATH: options.path,
@@ -187,7 +196,13 @@ function ask(value: string): string {
 
 /** Every argv a stub vendor was handed during the test, in order (D-142). */
 async function argvOf(home: string, name: string): Promise<string[][]> {
-  const text = await readFile(join(home, `argv-${name}.jsonl`), "utf8").catch(() => "");
+  // A stub logs under the HOME it was given: the harness home, or — when the turn ran in the kernel fence — Mind's
+  // home for that vendor and the subject (D-192). A run is in one of the two, never both.
+  const fenced = join(home, "state", "mind", "vendors", name, "subjects", "example");
+  const text = [
+    await readFile(join(home, `argv-${name}.jsonl`), "utf8").catch(() => ""),
+    await readFile(join(fenced, `argv-${name}.jsonl`), "utf8").catch(() => ""),
+  ].join("");
   return text.trim() === "" ? [] : text.trim().split("\n").map((line) => JSON.parse(line) as string[]);
 }
 
@@ -444,6 +459,158 @@ console.log(JSON.stringify({
     }
   });
 
+  describe.skipIf(!FENCE_SUPPORT.ok)("--scope machine does not start on main (S22.8 AC3)", () => {
+    async function repoOn(parent: string, branch: string): Promise<string> {
+      const dir = join(parent, "work");
+      await mkdir(dir, { recursive: true });
+      const git = async (...args: string[]) => {
+        const child = Bun.spawn(["git", ...args], { cwd: dir, stdout: "pipe", stderr: "pipe", env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@example.invalid", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@example.invalid" } });
+        const stderr = await new Response(child.stderr).text();
+        expect(await child.exited, stderr).toBe(0);
+      };
+      await git("init", "-q", "-b", "main");
+      await writeFile(join(dir, "a.txt"), "one");
+      await git("add", "a.txt");
+      await git("commit", "-q", "-m", "one");
+      if (branch !== "main") await git("checkout", "-q", "-b", branch);
+      return dir;
+    }
+    async function actingAgent(home: string): Promise<string> {
+      const agent = join(home, "agent");
+      await cp(SOUL, join(agent, "soul"), { recursive: true });
+      await writeFile(join(agent, "autonomy.md"), `+++\nschema = "mind/autonomy@1"\n\nread = 2\nwrite = 2\nrun = 2\nreach = 2\n+++\n`);
+      return agent;
+    }
+
+    test("a turn that may write and starts on main is refused, with nothing sent", async () => {
+      const harness = await makeHarness();
+      const agent = await actingAgent(harness.home);
+      const cwd = await repoOn(harness.home, "main");
+      const result = await run(harness.home, ["turn", agent, "--subject", "example", "--prompt", "anything", "--backend", "claude", "--scope", "machine"], { path: `${harness.withVendors}:${dirname(Bun.which("git") ?? "/usr/bin/git")}`, ollama: NO_OLLAMA, cwd });
+      expect(result.code).not.toBe(0);
+      expect(result.stderr).toContain("scope machine does not start on main");
+      expect(result.stderr).toContain("mind task new --worktree");
+      expect(result.stdout).toBe("");
+    });
+
+    test("the same turn on a branch of its own is not refused for that", async () => {
+      const harness = await makeHarness();
+      const agent = await actingAgent(harness.home);
+      const cwd = await repoOn(harness.home, "feat/t-00000001");
+      const result = await run(harness.home, ["turn", agent, "--subject", "example", "--prompt", "anything", "--backend", "claude", "--scope", "machine"], { path: `${harness.withVendors}:${dirname(Bun.which("git") ?? "/usr/bin/git")}`, ollama: NO_OLLAMA, cwd });
+      expect(result.stderr).not.toContain("does not start on");
+    }, 30_000);
+  });
+
+  describe("--scope (S22.8)", () => {
+    const bad = async (extra: string[]) => {
+      const harness = await makeHarness();
+      return run(harness.home, ["turn", SOUL, "--subject", "example", "--prompt", "anything", ...extra], { path: harness.withVendors, ollama: NO_OLLAMA });
+    };
+
+    test("a scope that is not worktree or machine is a usage error before anything runs", async () => {
+      const result = await bad(["--scope", "root"]);
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain("--scope must be worktree or machine");
+      expect(result.stdout).toBe("");
+    });
+
+    test("--deny goes only with machine, and takes absolute paths", async () => {
+      const alone = await bad(["--deny", "/data/x"]);
+      expect(alone.code).toBe(2);
+      expect(alone.stderr).toContain("--deny only goes with --scope machine");
+      const relative = await bad(["--scope", "machine", "--deny", "data/x"]);
+      expect(relative.code).toBe(2);
+      expect(relative.stderr).toContain("--deny takes absolute paths");
+    });
+
+    test("machine at a level that does not act changes nothing, says so, and the turn still answers", async () => {
+      const harness = await makeHarness();
+      const value = token();
+      const result = await run(
+        harness.home,
+        ["turn", SOUL, "--subject", "example", "--prompt", ask(value), "--backend", "claude", "--scope", "machine"],
+        { path: harness.withVendors, ollama: NO_OLLAMA },
+      );
+      expect(result.stderr).toContain("scope machine changes nothing here");
+      expect(result.stdout.trim()).toBe(`${value} from claude with-soul`);
+      expect(result.code).toBe(0);
+    });
+  });
+
+  describe("--cloud-only (S22.4)", () => {
+    test("a chain that names a local backend is refused with exit 2 before anything is sent", async () => {
+      const harness = await makeHarness();
+      const ollama = serveOllama();
+      try {
+        for (const chain of ["ollama", "claude,ollama", "claude-local"]) {
+          const result = await run(
+            harness.home,
+            ["turn", SOUL, "--subject", "example", "--prompt", ask(token()), "--backend", chain, "--cloud-only"],
+            { path: harness.withVendors, ollama: ollama.url },
+          );
+          expect(result.code, chain).toBe(2);
+          expect(result.stderr, chain).toContain("cloud-only allows only cloud backends");
+          expect(result.stderr, chain).toContain("Nothing was sent");
+          expect(result.stdout, chain).toBe("");
+        }
+        expect(ollama.systems.length).toBe(0);
+      } finally {
+        await ollama.server.stop(true);
+      }
+    });
+
+    test("--route local cannot go with it", async () => {
+      const harness = await makeHarness();
+      const result = await run(
+        harness.home,
+        ["turn", SOUL, "--subject", "example", "--prompt", "anything", "--route", "local", "--cloud-only"],
+        { path: harness.withVendors, ollama: NO_OLLAMA },
+      );
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain("--route local cannot go with cloud-only");
+    });
+
+    test("when every cloud backend misses, the turn does not fall through to ollama", async () => {
+      const harness = await makeHarness();
+      const ollama = serveOllama();
+      try {
+        const result = await run(
+          harness.home,
+          ["turn", SOUL, "--subject", "example", "--prompt", ask(token()), "--model", "claude=stub,codex=stub", "--cloud-only"],
+          { path: harness.withVendors, stubMode: "silent", ollama: ollama.url },
+        );
+        expect(result.code).not.toBe(0);
+        expect(result.stderr).toContain("no backend answered");
+        expect(result.stderr).toContain("all 2 backend(s) missed · claude: silent · codex: silent");
+        expect(result.stderr).not.toContain("answered by ollama");
+        expect(result.stdout).not.toContain("from ollama");
+        expect(ollama.systems.length).toBe(0);
+      } finally {
+        await ollama.server.stop(true);
+      }
+    });
+
+    test("MIND_CLOUD_ONLY=1 turns it on too, and a cloud backend still answers", async () => {
+      const harness = await makeHarness();
+      const ollama = serveOllama();
+      const value = token();
+      try {
+        const result = await run(
+          harness.home,
+          ["turn", SOUL, "--subject", "example", "--prompt", ask(value), "--model", "claude=stub,codex=stub"],
+          { path: harness.withVendors, ollama: ollama.url, env: { MIND_CLOUD_ONLY: "1" } },
+        );
+        expect(result.stdout.trim()).toBe(`${value} from claude with-soul`);
+        expect(result.stderr).toContain("cloud-only: the chain is claude, codex");
+        expect(result.code).toBe(0);
+        expect(ollama.systems.length).toBe(0);
+      } finally {
+        await ollama.server.stop(true);
+      }
+    });
+  });
+
   test("a CLI that is not logged in is a miss, and its complaint is never printed as an answer", async () => {
     const harness = await makeHarness();
     const ollama = serveOllama();
@@ -460,7 +627,8 @@ console.log(JSON.stringify({
       // to a pipe as the model's reply is the worst available outcome.
       expect(result.stdout).not.toContain("Not logged in");
       expect(result.stdout.trim()).toBe(`${value} from ollama with-soul`);
-      expect(result.stderr).toContain("missed: claude: silent · codex: silent");
+      // S22.2: a CLI that says it is not logged in is named so in the trail, and the owner sees why.
+      expect(result.stderr).toContain("missed: claude: silent (auth) · codex: silent (auth)");
       expect(result.code).toBe(0);
     } finally {
       await ollama.server.stop(true);

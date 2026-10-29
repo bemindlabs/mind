@@ -14,7 +14,7 @@
 
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { ReadOnlySpec } from "../exec/registry.ts";
+export { noToolsWhenRestrained } from "../exec/registry.ts";
 import { ensurePersonalDir, type PersonalEnv } from "../guard/personal.ts";
 import type { SubjectId } from "../types.ts";
 import type { Attachment } from "./attach.ts";
@@ -99,18 +99,6 @@ export function askTerms(question: string): readonly string[] {
   return [...new Set(out)];
 }
 
-/**
- * True when a backend's read-only flags leave it **no tools at all** — the only restraint an ask runs under
- * (D-152 review). Read-only is not enough: a read tool reads `~/.secrets` as readily as `memory/`, and a memory
- * note can ask it to. Today that is claude's empty `--tools ""` allow list (and so claude-local's), measured to
- * remove every built-in tool (registry, 2026-09-21). grok's allow list keeps read_file, grep and list_dir, and an
- * empty grok list has not been measured — the registry records that grok accepts unknown names silently — so grok
- * and grok-local are not used for an ask until it is. ollama is given no tools by construction and is admitted
- * separately.
- */
-export function noToolsWhenRestrained(spec: ReadOnlySpec): boolean {
-  return spec.kind === "allow-tools" && spec.values.length === 1 && spec.values[0] === "";
-}
 
 /**
  * How long the web route's `memory ask` child gets after SIGTERM before its group gets SIGKILL, in milliseconds

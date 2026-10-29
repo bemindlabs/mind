@@ -240,8 +240,9 @@ describe("a full erase", () => {
     // confirmations (D-042), the rag marker (D-038), the run records (S5.4), the browser task records (D-151),
     // the trigger fire times (S5.3), the A2A peers (D-063), the chat
     // allowlist (D-066), the bot approvals (S9 AC5), the push handles (D-130), the basis records (D-077), the personal directory and the
-    // agent's signing key (S15.8). The block and the ledger lines are counted separately.
-    expect(plan.trees.length).toBe(15);
+    // agent's signing key (S15.8), and the three cloud vendor homes Mind keeps for the subject (D-192). The block
+    // and the ledger lines are counted separately.
+    expect(plan.trees.length).toBe(18);
     expect(plan.blocks.filter((block) => block.outcome === "strip").length).toBe(1);
     expect(plan.ledger.matched.length).toBe(1);
 
@@ -389,7 +390,7 @@ describe("a full erase", () => {
 
     const plan = await planErase(envFor(home), request(mine.agent, [mine.instruction]));
     // No new tree: the store is a subtree of a tree that was already planned.
-    expect(plan.trees.length).toBe(15);
+    expect(plan.trees.length).toBe(18);
     const observed = plan.trees.find((tree) => tree.plan.dir === personal);
     expect(observed).toBeDefined();
     expect(observed!.plan.before.paths.some((path) => path.includes("proposals"))).toBe(true);
@@ -426,7 +427,7 @@ describe("a full erase", () => {
 
     const before = await snapshot();
     const plan = await planErase(envFor(home), request(mine.agent, [mine.instruction]));
-    expect(plan.trees.length).toBe(15);
+    expect(plan.trees.length).toBe(18);
     const after = await snapshot();
 
     expect([...after.keys()].sort()).toEqual([...before.keys()].sort());
@@ -550,9 +551,9 @@ describe("--personal", () => {
       }),
     );
     expect(plan.files).toEqual([join(mine.agent, "soul", "person.md")]);
-    // Eleven trees, not thirteen: `soul/` stays, because `role.md` is in it, and so does the agent's signing
+    // Sixteen trees, not eighteen: `soul/` stays, because `role.md` is in it, and so does the agent's signing
     // key — the agent's identity, not the person's data (S15.8 review; D-138).
-    expect(plan.trees.length).toBe(13);
+    expect(plan.trees.length).toBe(16);
     expect(plan.trees.some((tree) => tree.label.includes("signing key"))).toBe(false);
     // No key was made in this fixture, so none is said to be kept (S15.8 re-review; the cases with one are below).
     expect(plan.notes.some((note) => note.includes("keeps the agent's signing key"))).toBe(false);
@@ -884,8 +885,9 @@ describe("--no-agent", () => {
 
     // Backups, confirmations, run records, browser task records, trigger fire times, A2A peers, the
     // chat allowlist, the push handles, the basis records, the rag marker, the
-    // personal directory and the signing key need no repository; soul/ and .mind/ are not visited at all.
-    expect(plan.trees.length).toBe(13);
+    // personal directory, the signing key and the cloud vendor homes (D-192) need no repository; soul/ and
+    // .mind/ are not visited at all.
+    expect(plan.trees.length).toBe(16);
     expect(plan.git).toBeNull();
     expect(plan.notes.join("\n")).toContain("--no-agent");
     // The reserved addresses cannot be probed either, and that is said.

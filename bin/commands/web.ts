@@ -16,13 +16,20 @@ import { engineCommand } from "../../src/guard/hooks.ts";
 import { query } from "../../src/ledger/store.ts";
 import { loadSoul } from "../../src/soul/load.ts";
 import { runGuarded } from "../../src/spawn.ts";
+import { turnDetailFrom } from "../../src/web/turndetail.ts";
 import { runWithDeadline } from "../../src/web/deadline.ts";
 import { subjectId, type SubjectId } from "../../src/types.ts";
 import { startWeb, tailnetNames } from "../../src/web/server.ts";
 import { ago, approvalLists, excerpt, inLanguage, levelSentence, operateSentence, remoteForPage, triageChips, type AgentInfo, type PrivacyState, type SettingsState, type ViewState } from "../../src/web/view.ts";
 import { latestScreen, pendingApprovals, recentTasks } from "../../src/task/screen.ts";
 import { answerHeld } from "../../src/task/answer.ts";
-import { tasksDir } from "../../src/task/store.ts";
+import { listTasks, tasksDir } from "../../src/task/store.ts";
+import { readFile as readFileText } from "node:fs/promises";
+import { backend as backendFor } from "../../src/exec/index.ts";
+import { fileHealth, healthPath } from "../../src/exec/health.ts";
+import { readMeasures } from "../../src/dispatch/measure.ts";
+import { parseRoster } from "../../src/fleet/roster.ts";
+import { fleetView, restBackend, stopBot, wakeBackend, type FleetIo } from "../../src/fleet/status.ts";
 import { basisDirFor, readBasis, recordState } from "../../src/consent/basis.ts";
 import { listMemories, memoryGraph, readMemoryFile, whoMentions } from "../../src/web/memories.ts";
 import { keyPrint, loadOrCreateKey, replaceKey } from "../../src/web/key.ts";
@@ -47,9 +54,9 @@ import { VERSION } from "../../src/version.ts";
 import { homedir } from "node:os";
 import { decideDial, dialEnv } from "../dial.ts";
 import { bold, dim, ledgerEnv, parseArgs, report, usageError } from "../shared.ts";
-import { extname, join, resolve } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
 
-const USAGE = "usage: mind web <dir> --subject <id> [--port <n>] [--host <addr>] [--name <host,…>] [--https] [--key-file <path>] [--qr] [--backend a,b] [--model <m> | --model <backend>=<m>,…]";
+const USAGE = "usage: mind web <dir> --subject <id> [--port <n>] [--host <addr>] [--name <host,…>] [--https] [--key-file <path>] [--qr] [--fleet <fleet.toml>] [--backend a,b] [--model <m> | --model <backend>=<m>,…]";
 
 /** The default port: Mind's block in the dev band, beside the A2A default (30700). */
 export const WEB_PORT = 30701;
@@ -341,6 +348,54 @@ export async function cmdWeb(argv: readonly string[]): Promise<number> {
   // The names a browser may use to reach it: any given with --name, and — on
   // a tailnet address — this machine's own tailnet names, so the URL a person
   // types is not refused as a wrong host.
+  // S22.9 (D-197): the fleet page, when a roster is named. A roster that does not load stops the page from starting
+  // rather than showing a fleet that is not the one in the file.
+  let fleet: Parameters<typeof startWeb>[0]["fleet"];
+  const fleetFile = options.get("fleet");
+  if (fleetFile !== undefined && fleetFile !== "") {
+    const text = await readFileText(fleetFile, "utf8").catch(() => undefined);
+    if (text === undefined) return usageError(`cannot read ${fleetFile}`);
+    const roster = parseRoster(text);
+    if (!roster.ok) {
+      console.error(`mind: ${fleetFile} does not load:\n${roster.problems.map((problem) => `  - ${problem}`).join("\n")}\nThe page was not started.`);
+      return 2;
+    }
+    const bots = roster.bots;
+    const health = fileHealth(healthPath(dialEnv().home, dialEnv().env));
+    const io: FleetIo = {
+      tasks: async (subject) => {
+        const owner = subjectId(subject);
+        const dirFor = await tasksDir(dialEnv(), owner);
+        return dirFor.ok ? (await listTasks(dirFor.path, owner)).records : [];
+      },
+      ledger: async (subject) => (await query(ledgerEnv(), subjectId(subject))).entries,
+      measures: async (subject) => {
+        const owner = subjectId(subject);
+        const dirFor = await tasksDir(dialEnv(), owner);
+        return dirFor.ok ? readMeasures(dirname(dirFor.path)) : [];
+      },
+      reach: async (backendId) => {
+        try {
+          const probe = await backendFor(backendId).available();
+          return probe.ok ? { ok: true } : { ok: false, reason: probe.detail };
+        } catch {
+          return undefined;
+        }
+      },
+      stopTask: async (bot, task) => {
+        const out = await runGuarded([...engineCommand().argv, "task", "stop", task, bot.dir ?? "", "--subject", bot.subject, "--json"]);
+        return { ok: out.code === 0 };
+      },
+    };
+    fleet = {
+      view: () => fleetView(bots, io, health, Date.now()),
+      rest: async (backendId, minutes) => restBackend(bots, health, backendId, minutes, Date.now()),
+      wake: async (backendId) => wakeBackend(bots, health, backendId),
+      stop: (bot) => stopBot(bots, io, bot, Date.now()),
+    };
+    console.error(dim(`mind: the fleet page shows ${bots.length} bot(s) from ${fleetFile}`));
+  }
+
   const names = (options.get("name") ?? "").split(",").map((n) => n.trim()).filter((n) => n !== "");
   // --https: something in front (tailscale serve) ends TLS and forwards here,
   // with the tailnet name in the Host header — so the name must be accepted,
@@ -371,6 +426,7 @@ export async function cmdWeb(argv: readonly string[]): Promise<number> {
       dir: absolute,
       subject: id,
       turnFlags,
+      ...(fleet === undefined ? {} : { fleet }),
       state: () => gather(absolute, id, options),
       settings: () => gatherSettings(absolute, id, options),
       models: () => gatherModels(options),
@@ -381,10 +437,11 @@ export async function cmdWeb(argv: readonly string[]): Promise<number> {
       memoryWho: (thing) => whoMentions(absolute, thing),
       memory: (path) => readMemoryFile(absolute, path),
       // Gap 2 (D-079): one turn from the ledger, asked and answered, for "Recently".
+      // D-194: read through `mind ledger show --json --content`, the one declared reader of the ledger (D-022) — the
+      // server and this wiring only shape what it printed. Whatever it could not print is a turn not found.
       turnDetail: async (entryId) => {
-        const e = (await query(ledgerEnv(), id)).entries.find((x) => x.id === entryId);
-        if (e === undefined) return undefined;
-        return { asked: e.prompt, answer: e.text, backend: e.backend, model: e.model, modelRequested: e.model_requested ?? null, when: ago(e.at, new Date()), content: e.content };
+        const out = await runGuarded([...engineCommand().argv, "ledger", "show", "--subject", id, "--json", "--content"]).catch(() => undefined);
+        return out === undefined || out.code !== 0 ? undefined : turnDetailFrom(new TextDecoder().decode(out.stdout), entryId, (iso) => ago(iso, new Date()));
       },
       profile: async () => {
         const loaded = await loadSoul(absolute, id);

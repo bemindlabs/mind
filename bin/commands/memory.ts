@@ -50,6 +50,7 @@ import { vendor } from "../../src/exec/registry.ts";
 import { describeRun, removeRunRecord, writeRunRecord } from "../../src/decide/runs.ts";
 import { judgeInput, judgeLayer, loadLexicon, recordBlocked, resolveJudgeMode, screen } from "../../src/egress/index.ts";
 import { chosenLanguage } from "../../src/lang.ts";
+import { fileHealth, healthPath } from "../../src/exec/health.ts";
 import { RecordingExec, canAppend, modelOfTurn } from "../../src/ledger/index.ts";
 import { loadPrices } from "../../src/pricing/table.ts";
 import { printable } from "../../src/identity/shapes.ts";
@@ -984,6 +985,7 @@ async function cmdMemoryAsk(argv: readonly string[]): Promise<number> {
         return run({ ...prepared, system: askSystem(soulText, attachment, question) });
       });
     }),
+    fileHealth(healthPath(ledger.home, ledger.env)),
   );
 
   // `mind stop` finds an ask in progress by this record, as it finds a turn.

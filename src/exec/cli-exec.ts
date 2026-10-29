@@ -17,16 +17,35 @@ import type {
   TurnResult,
 } from "./backend.ts";
 import { classify } from "./backend.ts";
-import { chmod, mkdir, rename, unlink, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { hasUnexecutedInvocation, TOOL_FREE_INSTRUCTION } from "./tool-output.ts";
+import { chmod, mkdir, rename, rm, unlink, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute } from "node:path";
-import { expandPath, modelProblem, type ReadOnlySpec, type UsageSpec, type VendorSpec } from "./registry.ts";
+import { existsSync, realpathSync } from "node:fs";
+import { expandPath, modelProblem, noToolsWhenRestrained, type ReadOnlySpec, type UsageSpec, type VendorSpec } from "./registry.ts";
 import { restraintRefusal } from "./restraint.ts";
 import { fencedArgv, fenceSupport, type FencePolicy, type FenceSupport } from "./fence.ts";
+import {
+  cloudEnvironment,
+  cloudFenceNotice,
+  cloudFencePolicy,
+  cloudForcedEnvironment,
+  cloudHomePaths,
+  cloudVerdict,
+  credentialSyncNote,
+  prepareCloudHome,
+  readResolvers,
+  RESOLV_CONF,
+  syncCredentialBack,
+  writeCloudIdentity,
+  type CloudVerdict,
+  type CredentialSnapshot,
+} from "./cloud-fence.ts";
 import { procStat, signalSurvivors, signalTree, type ProcStat } from "../decide/runs.ts";
 import { spawnGuarded } from "../spawn.ts";
 import { browserWiring, withBrowserArgs, writeBrowserWiring } from "../browser/mcp-config.ts";
 import { tokenCount, UNREPORTED_USAGE, USAGE_FIELDS, type TurnModel, type Usage, type UsageField } from "../types.ts";
+import { installDeleteTripwire } from "./delete-tripwire.ts";
 
 /** Wall-clock ceiling for one turn when the caller names none. */
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -393,9 +412,41 @@ export class CliExec implements ExecBackend {
       readonly support: () => FenceSupport;
       readonly argv: (argv: readonly string[], policy: FencePolicy) => string[];
     } = { support: fenceSupport, argv: fencedArgv },
-    options: { readonly model?: string } = {},
+    options: {
+      readonly model?: string;
+      /**
+       * Where a fenced cloud turn finds the owner (D-192): the home its credential and Mind's state are under, the
+       * environment the vendor's login variables come from, and the resolv.conf to read name servers from.
+       * Ambient when left out — this file is the seam — and a temporary home in every test.
+       */
+      readonly cloud?: {
+        readonly home?: string;
+        readonly env?: Readonly<Record<string, string | undefined>>;
+        readonly resolvConf?: string;
+      };
+    } = {},
   ) {
     this.model = options.model === "" ? undefined : options.model;
+    this.ownerHome = options.cloud?.home ?? homedir();
+    this.ownerEnv = options.cloud?.env ?? process.env;
+    this.resolvConf = options.cloud?.resolvConf;
+  }
+
+  private readonly ownerHome: string;
+  private readonly ownerEnv: Readonly<Record<string, string | undefined>>;
+  private readonly resolvConf: string | undefined;
+
+  /** F1 and F4 for this request (D-192), asked of this backend's own kernel probe. */
+  cloudVerdict(request: TurnRequest): CloudVerdict {
+    return cloudVerdict(this.spec, request, this.fence.support());
+  }
+
+  /**
+   * The notice an unfenced cloud turn with tools carries (D-192, F4) — or `undefined` when the turn is fenced,
+   * local, or has no tools. Asked by the caller before the turn so it is said before anything is sent.
+   */
+  fenceNotice(request: TurnRequest): string | undefined {
+    return cloudFenceNotice(this.spec, this.cloudVerdict(request));
   }
 
   get id(): string {
@@ -411,12 +462,12 @@ export class CliExec implements ExecBackend {
   }
 
   /**
-   * True exactly when `run` will start this request through the kernel fence: `request.fence` is what makes
-   * `run` ask the kernel and wrap the argv (and refuse the turn when it cannot). A request with none runs on
-   * the vendor's own flags — the cloud case — and is not fenced.
+   * True exactly when `run` will start this request through the kernel fence: a request that carries a fence
+   * (a local turn, D-118), or a cloud turn that F1 fences on a kernel that can (D-192). A cloud turn with no
+   * tool, on a vendor Mind has not measured, or on a kernel without Landlock runs unfenced, and says false.
    */
   appliesFence(request: TurnRequest): boolean {
-    return request.fence !== undefined;
+    return request.fence !== undefined || this.cloudVerdict(request).kind === "fenced";
   }
 
   /**
@@ -492,16 +543,65 @@ export class CliExec implements ExecBackend {
       if (!available.ok) return nothingRan(`refused by the kernel fence: ${available.reason}`);
     }
 
+    // D-192. A cloud turn with a tool runs in a home of Mind's own, inside the fence. The home is made, the
+    // credential copied and the identity written before anything starts; a home that cannot be made stops the
+    // turn rather than letting it run unfenced.
+    const verdict = this.cloudVerdict(request);
+    const unfencedNotice = cloudFenceNotice(this.spec, verdict);
+    // S22.8: `scope = machine` keeps its red lines only inside the cloud fence. A vendor whose home is not measured, or
+    // a kernel without Landlock, would run it as the owner with the red lines unheld, so the turn does not start.
+    if (request.machine !== undefined && request.restraint.loosened && verdict.kind !== "fenced" && verdict.kind !== "local") {
+      return nothingRan(
+        `refused: scope machine needs this turn inside the cloud fence, and ${this.spec.id}'s is not in force ` +
+          `(${verdict.kind}). Its red lines would be a promise, not a rule. Nothing was sent.`,
+      );
+    }
+    let cloudFence: FencePolicy | undefined;
+    let cloud: { readonly paths: ReturnType<typeof cloudHomePaths>; readonly snapshot: CredentialSnapshot } | undefined;
+    if (verdict.kind === "fenced") {
+      // The home the caller aimed the turn at (a probe's), else the owner's: where the credential and the
+      // owner's instruction file are looked for.
+      const ownerEnv = { ...this.ownerEnv, ...request.env };
+      const ownerHome = request.env?.["HOME"] ?? this.ownerHome;
+      const paths = cloudHomePaths(this.spec, verdict.cloud, request.subject, this.ownerHome, this.ownerEnv);
+      const located = { ...paths, ownerCredential: cloudHomePaths(this.spec, verdict.cloud, request.subject, ownerHome, ownerEnv).ownerCredential };
+      try {
+        const snapshot = await prepareCloudHome(located);
+        await writeCloudIdentity(this.spec, verdict.cloud, located, request, ownerHome, ownerEnv);
+        cloud = { paths: located, snapshot };
+      } catch (cause) {
+        return nothingRan(`refused by the kernel fence: Mind's home for ${this.spec.id} could not be prepared (${String(cause)})`);
+      }
+      const cwd = request.cwd ?? process.cwd();
+      cloudFence = cloudFencePolicy({
+        paths: located,
+        cwd,
+        loosened: request.restraint.loosened,
+        resolvers: await readResolvers(this.resolvConf ?? RESOLV_CONF),
+        resolvConf: this.resolvConf ?? RESOLV_CONF,
+        ...(request.browser === undefined ? {} : { browser: { port: request.browser.port, dir: request.browser.dir } }),
+        ...(request.machine === undefined ? {} : { machine: request.machine }),
+      });
+    }
+    let fence = request.fence ?? cloudFence;
+
     // D-120. A restrained turn on a vendor held by a profile file gets that
     // file freshly written, or does not run: the vendor would otherwise read
     // whatever a looser turn left at that path.
     // The child's environment, decided once: this process's, the caller's
     // overrides, then the vendor's hardening switches (S12.6), which no caller
-    // may undo — and the subject last, which nobody may rename.
+    // may undo — and the subject last, which nobody may rename. A fenced cloud
+    // turn inherits nothing (D-192): the vendor's own login variables and the
+    // home Mind made for it, which no caller may move.
     const childEnv: Record<string, string | undefined> = {
-      ...(this.spec.inheritEnv === false ? {} : process.env),
+      ...(cloud !== undefined && verdict.kind === "fenced"
+        ? cloudEnvironment(verdict.cloud, this.ownerEnv)
+        : this.spec.inheritEnv === false
+          ? {}
+          : process.env),
       ...request.env,
       ...this.spec.hardening?.env,
+      ...(cloud !== undefined && verdict.kind === "fenced" ? cloudForcedEnvironment(verdict.cloud, cloud.paths) : {}),
       MIND_SUBJECT: request.subject,
     };
 
@@ -522,14 +622,29 @@ export class CliExec implements ExecBackend {
       }
     }
 
-    let argv = [this.spec.binary, ...this.spec.headlessArgv(model === undefined ? request : { ...request, model })];
+    // D-192: a vendor whose launcher starts the real CLI as a child is started as that CLI, so its own connects
+    // are the ones the fence's supervisor can read.
+    let program = this.spec.binary;
+    if (verdict.kind === "fenced" && verdict.cloud.program !== undefined) {
+      const found = Bun.which(this.spec.binary, { PATH: childEnv["PATH"] ?? "" });
+      const native = found === null ? undefined : verdict.cloud.program(realpathSync(found), process.arch);
+      if (native !== undefined) {
+        program = native.path;
+        Object.assign(childEnv, native.env);
+      }
+    }
+    const composed = { ...request, ...(model === undefined ? {} : { model }), ...(cloud === undefined ? {} : { fenced: true }) };
+    let argv = [program, ...this.spec.headlessArgv(composed)];
 
     // Only two vendors accept a system prompt as a flag. For the rest the
     // identity has to already be on disk, and the result says so rather than
     // implying the turn carried it.
     const appendFlag = this.spec.identity.appendPromptFlag;
     const carriedAsFlag = request.system !== undefined && appendFlag !== undefined;
-    if (carriedAsFlag) argv.push(appendFlag, request.system!);
+    const toolFree = !request.restraint.loosened && request.browser === undefined && noToolsWhenRestrained(this.spec.readOnly);
+    if (appendFlag !== undefined && (carriedAsFlag || toolFree)) {
+      argv.push(appendFlag, [request.system, ...(toolFree ? [TOOL_FREE_INSTRUCTION] : [])].filter(Boolean).join("\n\n"));
+    }
 
     // D-155. The task's browser, as the one MCP server this turn is handed — or
     // no turn: a vendor that cannot be told *only this server* is refused, and
@@ -545,16 +660,49 @@ export class CliExec implements ExecBackend {
       argv = withBrowserArgs(argv, wiring);
     }
 
-    let spawnArgv = argv;
-    if (request.fence !== undefined) {
+    let tripwire: string | undefined;
+    if (request.machine !== undefined) {
+      if (fence === undefined) return nothingRan("refused: scope machine needs a fence for its deletion tripwire");
       try {
-        spawnArgv = this.fence.argv(argv, request.fence);
+        const entry = Bun.main.endsWith(".ts") && isAbsolute(Bun.main) && existsSync(Bun.main)
+          ? [process.execPath, "run", Bun.main] : [process.execPath];
+        tripwire = await installDeleteTripwire(request.machine, childEnv["PATH"] ?? "/usr/bin:/bin", entry, tmpdir());
+        childEnv["PATH"] = `${tripwire}:${childEnv["PATH"] ?? "/usr/bin:/bin"}`;
+        fence = { ...fence, readable: [...(fence.readable ?? []), tripwire] };
       } catch (cause) {
+        return nothingRan(`refused: deletion tripwire could not be prepared (${String(cause)})`);
+      }
+    }
+    let spawnArgv = argv;
+    if (fence !== undefined) {
+      try {
+        spawnArgv = this.fence.argv(argv, fence);
+      } catch (cause) {
+        if (tripwire !== undefined) await rm(tripwire, { recursive: true, force: true });
         return nothingRan(`refused by the kernel fence: ${String(cause)}`);
       }
     }
 
     const timeoutMs = request.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+    // D-192. Whatever happened, the vendor's refreshed login goes back to the owner (or is said not to), and an
+    // unfenced cloud turn with tools carries its notice on the result as well as before it.
+    const finish = async (result: TurnResult): Promise<TurnResult> => {
+      if (tripwire !== undefined) await rm(tripwire, { recursive: true, force: true });
+      let login: string | undefined;
+      if (cloud !== undefined) {
+        try {
+          login = credentialSyncNote(this.spec, await syncCredentialBack(cloud.paths, cloud.snapshot), cloud.paths);
+        } catch (cause) {
+          login = `${this.spec.id}: its refreshed login could not be written back (${String(cause)}); ${cloud.paths.ownerCredential} was not changed (D-192).`;
+        }
+      }
+      return {
+        ...result,
+        ...(unfencedNotice === undefined ? {} : { unfenced: unfencedNotice }),
+        ...(login === undefined ? {} : { login }),
+      };
+    };
 
     let stdout = "";
     let stderr = "";
@@ -618,7 +766,7 @@ export class CliExec implements ExecBackend {
       // channel it *would* have used describes a delivery that never
       // happened — the same shape of lie as reading a login error as the
       // model's answer.
-      return {
+      return finish({
         backend: this.spec.id,
         text: "",
         confidence: "silent",
@@ -635,7 +783,7 @@ export class CliExec implements ExecBackend {
           usage: extractUsage(this.spec, "", ""),
           model: asked,
         },
-      };
+      });
     }
 
     const durationMs = Math.round(performance.now() - startedAt);
@@ -653,11 +801,12 @@ export class CliExec implements ExecBackend {
     // the vendor says it did not finish is not an answer either, whatever
     // sentence it got out first.
     const stoppedAt = unfinished(this.spec, stdout);
-    const confidence = timedOut || stoppedAt !== undefined ? "silent" : classify(text, exitCode);
+    const leakedInvocation = !timedOut && stoppedAt === undefined && exitCode === 0 && toolFree && hasUnexecutedInvocation(text);
+    const confidence = timedOut || stoppedAt !== undefined ? "silent" : leakedInvocation ? "failed" : classify(text, exitCode);
 
-    return {
+    return finish({
       backend: this.spec.id,
-      text,
+      text: leakedInvocation ? "The model returned tool-call markup as text even though this turn has no tools. Those calls were not executed. Attach the relevant file contents and retry." : text,
       confidence,
       identityStrength: carriedAsFlag
         ? this.spec.identity.strength
@@ -669,7 +818,9 @@ export class CliExec implements ExecBackend {
         prompt: request.prompt,
         // Keep stderr when stdout is empty: for several of these CLIs the
         // reason a turn produced nothing is only ever on stderr.
-        raw: timedOut
+        raw: leakedInvocation
+          ? `unexecuted tool-call markup in a tool-free reply\n${stdout}`
+          : timedOut
           ? `timed out after ${timeoutMs}ms\n${stderr}`.trim()
           : stoppedAt !== undefined
             ? [
@@ -688,6 +839,6 @@ export class CliExec implements ExecBackend {
         model: { requested: asked.requested, reported: reportedModels(this.spec, stdout) },
         ...(exitCode === undefined ? {} : { exitCode }),
       },
-    };
+    });
   }
 }

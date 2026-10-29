@@ -28,6 +28,8 @@
 
 import { readMind } from "../env.ts";
 import { LITELLM_BASE_URL, isLocalCliId } from "../exec/local-cli.ts";
+import type { Health } from "../exec/health.ts";
+import { chainRest } from "./rest.ts";
 import type { TaskRecord } from "./store.ts";
 
 export const VLLM_URL_ENV = "MIND_VLLM_URL";
@@ -39,7 +41,8 @@ const PROBE_TIMEOUT_MS = 3000;
 /** The most of an answer that is read: both probes' answers are a few bytes. */
 export const MAX_PROBE_BODY_BYTES = 64 * 1024;
 
-export type BackendState = { readonly ready: true } | { readonly ready: false; readonly reason: string };
+/** `retryAt` (epoch ms) is said when the answer knows when to ask again: a backend resting until its quota returns (S22.10). */
+export type BackendState = { readonly ready: true } | { readonly ready: false; readonly reason: string; readonly retryAt?: number };
 
 type Fetch = (url: string, init: { readonly method: "GET"; readonly signal: AbortSignal; readonly redirect: "error" }) => Promise<Response>;
 
@@ -116,7 +119,16 @@ export async function probeLocalModel(targets: { readonly litellm: string; reado
 }
 
 /** The runner's `backendReady`: the probe for a task that needs the local model, ready for any other. */
-export function backendReadiness(env: Readonly<Record<string, string | undefined>>, fetcher?: Fetch): (record: TaskRecord) => Promise<BackendState> {
+export function backendReadiness(
+  env: Readonly<Record<string, string | undefined>>,
+  fetcher?: Fetch,
+  /** S22.10: the book of resting backends and the clock; a task whose whole named chain rests is not ready. */
+  rest?: { readonly health: Health; readonly now: () => number },
+): (record: TaskRecord) => Promise<BackendState> {
   const targets = probeTargets(env);
-  return async (record) => (needsLocalModel(record) ? probeLocalModel(targets, fetcher) : { ready: true });
+  return async (record) => {
+    if (needsLocalModel(record)) return probeLocalModel(targets, fetcher);
+    const resting = rest === undefined ? undefined : chainRest(record, rest.health, rest.now());
+    return resting === undefined ? { ready: true } : { ready: false, reason: resting.reason, retryAt: resting.retryAt };
+  };
 }

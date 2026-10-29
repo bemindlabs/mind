@@ -26,12 +26,14 @@
  */
 
 import { homedir } from "node:os";
-import { isAbsolute, resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { NonEmpty } from "../types.ts";
 import type { IdentityStrength } from "./backend.ts";
 // Type-only, and it has to stay that way: `restraint.ts` imports the two types
 // below from here, so a value import in either direction would be a cycle.
 import type { Restraint } from "./restraint.ts";
+import type { CloudHomeSpec } from "./cloud-fence.ts";
 
 /** How an identity reaches one vendor, and how strongly. */
 export interface IdentityChannel {
@@ -196,6 +198,20 @@ export type ReadOnlySpec =
     };
 
 /**
+ * True when a backend's read-only flags leave it **no tools at all** — the only restraint an ask runs under
+ * (D-152 review). Read-only is not enough: a read tool reads `~/.secrets` as readily as `memory/`, and a memory
+ * note can ask it to. Today that is claude's empty `--tools ""` allow list (and so claude-local's), measured to
+ * remove every built-in tool (registry, 2026-09-21). grok's allow list keeps read_file, grep and list_dir, and an
+ * empty grok list has not been measured — the registry records that grok accepts unknown names silently — so grok
+ * and grok-local are not used for an ask until it is. ollama is given no tools by construction and is admitted
+ * separately.
+ */
+export function noToolsWhenRestrained(spec: ReadOnlySpec): boolean {
+  return spec.kind === "allow-tools" && spec.values.length === 1 && spec.values[0] === "";
+}
+
+
+/**
  * How one vendor CLI takes a model, and where it says which model it ran (D-142).
  *
  * The flag is read off the CLI's own `--help` on this machine, never inferred
@@ -327,6 +343,11 @@ export interface VendorSpec {
    */
   readonly model?: ModelSpec;
   /**
+   * How a cloud turn on this vendor gets a home of Mind's own inside the kernel fence (D-192, F2). Absent: the
+   * vendor's home and credential have not been measured, so its turns run unfenced and say so on every turn.
+   */
+  readonly cloudHome?: CloudHomeSpec;
+  /**
    * Argv after the binary for a single-turn, text-only answer.
    *
    * **Read-only only if the dial says so**, and the {@link Restraint} is how it
@@ -343,6 +364,8 @@ export interface VendorSpec {
     readonly restraint: Restraint;
     /** Present when Mind carries the identity itself (D-047 isolates on it). */
     readonly system?: string;
+    /** True when this turn runs inside Mind's kernel fence (D-192): a vendor may then be granted differently. */
+    readonly fenced?: boolean;
   }): string[];
   /**
    * JSON pointers tried in order against stdout. Empty means stdout is the
@@ -466,13 +489,19 @@ export function restraintArgs(spec: ReadOnlySpec, restraint: Restraint): string[
 export interface GrantSpec {
   readonly act2: readonly string[];
   readonly act3: readonly string[];
+  /**
+   * D-192: what levels 2 and 3 grant when the turn runs inside Mind's kernel fence, where the vendor's own
+   * sandbox is a second, narrower box inside the first. Absent: the same grant fenced or not.
+   */
+  readonly inFence?: readonly string[];
   /** What was measured, and against which version. */
   readonly evidence: string;
 }
 
-/** The grant for this turn's level, or nothing below 2. */
-export function grantArgs(grant: GrantSpec | undefined, restraint: Restraint): string[] {
+/** The grant for this turn's level, or nothing below 2 — the fenced one when the kernel fence holds the turn. */
+export function grantArgs(grant: GrantSpec | undefined, restraint: Restraint, fenced = false): string[] {
   if (grant === undefined || !restraint.loosened) return [];
+  if (fenced && grant.inFence !== undefined) return [...grant.inFence];
   return [...(restraint.unfenced ? grant.act3 : grant.act2)];
 }
 
@@ -530,6 +559,26 @@ const CLAUDE_MODEL: ModelSpec = {
     "modelUsage keyed `claude-haiku-4-5-20251001` with canonicalModel `claude-haiku-4-5`",
 };
 
+/**
+ * D-192 (F2) — claude's home of Mind's own. claude reads `$CLAUDE_CONFIG_DIR/.credentials.json`, opening it with
+ * `O_NOFOLLOW` (a symlink to the owner's file is refused), and rewrites it through a temporary file and a rename in
+ * that directory (2.1.303's credential store), so the copy is a managed one, written back after a refresh.
+ */
+const CLAUDE_CLOUD_HOME: CloudHomeSpec = {
+  configEnv: "CLAUDE_CONFIG_DIR",
+  configDir: ".claude",
+  credential: "${CLAUDE_CONFIG_DIR:-~/.claude}/.credentials.json",
+  credentialName: ".credentials.json",
+  identityFile: "CLAUDE.md",
+  passEnv: ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"],
+  tmpEnv: ["CLAUDE_CODE_TMPDIR"],
+  env: { DISABLE_AUTOUPDATER: "1" },
+  evidence:
+    "measured 2026-10-19 on 2.1.303: credential store opened with O_NOFOLLOW and replaced by temporary file + rename; " +
+    "a level-2 turn in the fence with only the copied login ran Bash, wrote its working directory, was refused a " +
+    "canary under the owner's home and a loopback connect, and answered (confirmed)",
+};
+
 const CLAUDE: VendorSpec = {
   id: "claude",
   display: "Claude Code",
@@ -543,6 +592,7 @@ const CLAUDE: VendorSpec = {
   readOnly: CLAUDE_READONLY,
   grant: CLAUDE_GRANT,
   model: CLAUDE_MODEL,
+  cloudHome: CLAUDE_CLOUD_HOME,
   headlessArgv: ({ prompt, model, restraint, system }) => [
     "-p",
     prompt,
@@ -612,6 +662,11 @@ const CODEX_READONLY: ReadOnlySpec = {
 export const CODEX_GRANT: GrantSpec = {
   act2: ["--sandbox", "workspace-write"],
   act3: ["--sandbox", "danger-full-access"],
+  // D-192: inside Mind's fence the kernel already holds what workspace-write would (writes to the working
+  // directory and a home of Mind's own; no network for the commands it runs), and workspace-write's bubblewrap
+  // cannot start on a kernel that restricts user namespaces (`bwrap: loopback: Failed RTM_NEWADDR`, measured
+  // 2026-10-19 on 0.163.0, outside the fence too), so a level-2 turn could run nothing at all.
+  inFence: ["--sandbox", "danger-full-access"],
   evidence:
     "probed 2026-09-23 against 0.155.1 on kernel 7.0: default = read-only; workspace-write " +
     "refused both the write and the shell command on this machine; danger-full-access did both",
@@ -682,6 +737,50 @@ const CODEX_MODEL: ModelSpec = {
   evidence: "flag: `codex exec --help` of 0.155.1 (2026-09-28); the text output names no model",
 };
 
+/**
+ * D-192 (F2) — codex's home of Mind's own. `$CODEX_HOME/auth.json` is the login; the npm launcher starts a static
+ * musl binary as a child, so a fenced turn starts that binary itself ({@link codexNativeProgram}), and its resolver
+ * asks over UDP, which the fence's supervisor sends for it.
+ */
+/**
+ * The native codex behind npm's `bin/codex.js`, which starts it as a child (codex 0.163.0): the path that
+ * launcher computes for this architecture, and the variables it sets. `undefined` when `launcher` is not that
+ * file or the native program is not where the launcher would look.
+ */
+export function codexNativeProgram(
+  launcher: string,
+  arch: string,
+  exists: (path: string) => boolean = existsSync,
+): { readonly path: string; readonly env: Readonly<Record<string, string>> } | undefined {
+  if (!launcher.endsWith("/bin/codex.js")) return undefined;
+  const triple = arch === "x64" ? "x86_64-unknown-linux-musl" : arch === "arm64" ? "aarch64-unknown-linux-musl" : undefined;
+  if (triple === undefined) return undefined;
+  const root = dirname(dirname(launcher));
+  const found = [
+    join(root, "node_modules", "@openai", `codex-linux-${arch}`, "vendor", triple, "bin", "codex"),
+    join(root, "vendor", triple, "bin", "codex"),
+  ].find((path) => exists(path));
+  return found === undefined
+    ? undefined
+    : { path: found, env: { CODEX_MANAGED_PACKAGE_ROOT: root, CODEX_MANAGED_BY_NPM: "1" } };
+}
+
+const CODEX_CLOUD_HOME: CloudHomeSpec = {
+  configEnv: "CODEX_HOME",
+  configDir: ".codex",
+  credential: "${CODEX_HOME:-~/.codex}/auth.json",
+  credentialName: "auth.json",
+  identityFile: "AGENTS.md",
+  passEnv: ["OPENAI_API_KEY", "CODEX_API_KEY"],
+  tmpEnv: [],
+  env: {},
+  program: (launcher, arch) => codexNativeProgram(launcher, arch),
+  evidence:
+    "measured 2026-10-19 on 0.163.0: through the launcher every connect came from a child and was refused; the " +
+    "native binary in the fence with only the copied auth.json resolved names over UDP through the supervisor and " +
+    "reached OpenAI; auth.json was not rewritten across those turns",
+};
+
 const CODEX: VendorSpec = {
   id: "codex",
   display: "Codex CLI",
@@ -699,11 +798,12 @@ const CODEX: VendorSpec = {
   grant: CODEX_GRANT,
   hardening: CODEX_HARDENING,
   model: CODEX_MODEL,
-  headlessArgv: ({ prompt, model, restraint }) => [
+  cloudHome: CODEX_CLOUD_HOME,
+  headlessArgv: ({ prompt, model, restraint, fenced }) => [
     "exec",
     "--skip-git-repo-check",
     ...restraintArgs(CODEX_READONLY, restraint),
-    ...grantArgs(CODEX_GRANT, restraint),
+    ...grantArgs(CODEX_GRANT, restraint, fenced === true),
     // After `--sandbox`, the order that was measured.
     ...CODEX_HARDENING.args,
     ...modelArgs(CODEX_MODEL, model),
@@ -887,6 +987,27 @@ const GROK_MODEL: ModelSpec = {
     "modelUsage keyed by the model id the CLI sent (`local-coder`), no canonical field",
 };
 
+/**
+ * D-192 (F2) — grok's home of Mind's own. `$GROK_HOME/auth.json` is the login, and grok rewrites it when it refreshes
+ * (seen on the first fenced turn), which is why the copy is written back.
+ */
+const GROK_CLOUD_HOME: CloudHomeSpec = {
+  configEnv: "GROK_HOME",
+  configDir: ".grok",
+  credential: "${GROK_HOME:-~/.grok}/auth.json",
+  credentialName: "auth.json",
+  // grok reads Claude Code's instruction file on purpose ({@link IdentityChannel}), at `$HOME/.claude/CLAUDE.md`,
+  // and `HOME` is Mind's home here, beside `.grok`.
+  identityFile: "../.claude/CLAUDE.md",
+  passEnv: ["XAI_API_KEY", "GROK_API_KEY"],
+  tmpEnv: [],
+  env: { GROK_DISABLE_AUTOUPDATER: "1" },
+  evidence:
+    "measured 2026-10-19 on 1.0.50: a level-2 turn in the fence with only the copied auth.json ran its shell, wrote " +
+    "its working directory, was refused a canary under the owner's home and a loopback connect, and answered; it " +
+    "refreshed auth.json during the turn and Mind wrote the refreshed file back to the owner's",
+};
+
 const GROK: VendorSpec = {
   id: "grok",
   display: "Grok CLI",
@@ -906,6 +1027,7 @@ const GROK: VendorSpec = {
   readOnly: GROK_READONLY,
   grant: GROK_GRANT,
   hardening: GROK_HARDENING,
+  cloudHome: GROK_CLOUD_HOME,
   // Measured 2026-09-26 on 1.0.40, 76 runs: every finished turn said `end_turn`
   // (52); the other 24 said `cancelled` — 19 approval cancels at exit 0, 5 cap
   // hits at exit 1.
@@ -1213,6 +1335,9 @@ const KIMI: VendorSpec = {
     instructionFiles: ["./AGENTS.md", "${KIMI_CODE_HOME:-~/.kimi-code}/AGENTS.md"],
   },
   readOnly: KIMI_READONLY,
+  // No `cloudHome` (D-192): measured 2026-10-19 on 2.1.1, a home holding only the copied login answers "No model
+  // configured" — kimi needs the owner's config.toml (providers and models), which is more than the credential F2
+  // allows. Its turns run unfenced, with the notice.
   // No grant: print mode sets the vendor's own permission to `auto` (observed
   // 2026-09-26; forced, per the vendor's source), so at levels 2 and 3 a turn
   // edits and runs with no flag. A narrower level-2 profile through
@@ -1327,15 +1452,30 @@ export function readonlyLimits(vendors: readonly VendorSpec[] = VENDORS): readon
     (spec) => spec.readOnly.kind === "allow-tools" && spec.readOnly.values.every((value) => value === ""),
   );
   const canRead = vendors.filter((spec) => !withoutTools.includes(spec));
-  if (canRead.length > 0) {
+  // D-192: what "can read" reaches depends on whether Mind fences the vendor's cloud turns, so the sentence is
+  // split the same way the code is — by whether the vendor declares a measured home of Mind's own.
+  const fencedReaders = canRead.filter((spec) => spec.cloudHome !== undefined);
+  const openReaders = canRead.filter((spec) => spec.cloudHome === undefined);
+  const none = withoutTools.length > 0
+    ? ` ${named(withoutTools)} is started with no tools at all at level 1 and is the only kind here that reads nothing by itself.`
+    : "";
+  if (openReaders.length > 0) {
     lines.push(
-      `A read-only turn is not a turn that cannot read. ${named(canRead)} keep file-reading tools or a shell ` +
-        "that runs read commands, and run as you: they can open any file you can open (~/.secrets, ~/.ssh, " +
-        "other subjects' data) and send what they read to that vendor. The I-6 screen sees only the prompt " +
-        "and system text Mind sends, never what a vendor's own tool reads afterwards." +
-        (withoutTools.length > 0
-          ? ` ${named(withoutTools)} is started with no tools at all and is the only kind here that reads nothing by itself.`
-          : ""),
+      `A read-only turn is not a turn that cannot read. ${named(openReaders)} keep file-reading tools or a shell ` +
+        "that runs read commands, are not kernel-fenced, and run as you: they can open any file you can open " +
+        "(~/.secrets, ~/.ssh, other subjects' data) and send what they read to that vendor. The I-6 screen sees " +
+        "only the prompt and system text Mind sends, never what a vendor's own tool reads afterwards." +
+        none,
+    );
+  }
+  if (fencedReaders.length > 0) {
+    lines.push(
+      `${named(fencedReaders)} keep file-reading tools or a shell at level 1, and every turn of theirs that has a ` +
+        "tool runs inside the kernel fence (D-192): it can read the system directories, its working directory, " +
+        "its own program and a home Mind keeps for that vendor and subject — not the rest of your home, " +
+        "~/.secrets, ~/.ssh or other subjects' data. What it reads there it can still send to the vendor, and the " +
+        "I-6 screen never sees it. Where the kernel has no Landlock the turn runs unfenced and says so." +
+        (openReaders.length > 0 ? "" : none),
     );
   }
 

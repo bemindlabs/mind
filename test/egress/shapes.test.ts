@@ -581,7 +581,7 @@ describe("ordinary work is not kept in", () => {
     "Build 1.4.2 (commit f9ae14c) passed in 38 s; coverage 91.3 %.",
     "request id 550e8400-e29b-41d4-a716-446655440000 returned 200 in 38 ms",
     "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-    "ip 192.168.1.113 and 10.0.0.1:30701, mac 00:1A:2B:3C:4D:5E",
+    "ip 192.168.1.50 and 10.0.0.1:30701, mac 00:1A:2B:3C:4D:5E",
     "the epoch 1760345678 is 2025-10-13T08:54:38Z",
     "Total: $1,234,567.89 due 13/10/2026; invoice INV-2026-000123",
     "git diff: +12345678 lines, +5%, C++20, x+1234567, 3+4=7",

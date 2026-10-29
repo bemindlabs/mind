@@ -11,6 +11,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, cp, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fenceSupport } from "../../src/exec/fence.ts";
 import { subjectId } from "../../src/types.ts";
 import { confirmationsPath, setConfirmation } from "../../src/decide/confirm.ts";
 import { barePath, BUN } from "../support/bare-path.ts";
@@ -96,20 +97,38 @@ describe("a turn that may act reports what it changed", () => {
     expect((JSON.parse(result.stdout) as { changed: unknown }).changed).toBeNull();
   }, 60_000);
 
+  test("D-194: --json names the ledger line that holds the answer, and `ledger show --json` has it", async () => {
+    const { soul, work, run } = await setup();
+    const turn = await run(["turn", soul, "--subject", "example", "--backend", "claude", "--prompt", "hello", "--json"], work);
+    const { entry } = JSON.parse(turn.stdout) as { entry: string };
+    expect(entry).toMatch(/^[0-9a-f-]{36}$/);
+    const shown = await run(["ledger", "show", "--subject", "example", "--json", "--content"]);
+    const lines = (JSON.parse(shown.stdout) as { entries: { id: string; prompt: string }[] }).entries;
+    expect(lines.find((l) => l.id === entry)?.prompt).toBe("hello");
+  }, 60_000);
+
   // D-163 (Q4-D2): the grant is for a turn inside the fence (the vendor's own flags are tested in
   // test/exec/registry.test.ts). A cloud claude is held at 1 — nothing is granted — while the isolation stays.
-  test("D-047 / D-163: level 2 on a cloud vendor grants nothing (held at 1), and still isolates the identity and loads no MCP", async () => {
+  test("D-047 / D-163 / D-192: level 2 on claude is granted inside the fence, or held at 1 where the kernel cannot fence; identity isolated, no MCP", async () => {
     const { home, soul, work, run } = await setup();
     for (const category of ["write", "run", "reach"]) {
       await run(["autonomy", "set", category, "2", soul, "--subject", "example"]);
     }
     await run(["turn", soul, "--subject", "example", "--backend", "claude", "--prompt", "x"], work);
-    const argv = JSON.parse(await Bun.file(join(home, "argv.json")).text()) as string[];
-    expect(argv).not.toContain("acceptEdits");
+    const fenced = fenceSupport().ok;
+    // A fenced turn's HOME is Mind's home for claude and this subject (D-192), and the stub writes there.
+    const at = fenced ? join(home, "state", "mind", "vendors", "claude", "subjects", "example") : home;
+    const argv = JSON.parse(await Bun.file(join(at, "argv.json")).text()) as string[];
     expect(argv).toContain("--strict-mcp-config");
     expect(argv[argv.indexOf("--setting-sources") + 1]).toBe("project,local");
-    // The vendor's read-only flag stays ON: every built-in tool removed, exactly as at level 1.
-    expect(argv[argv.indexOf("--tools") + 1]).toBe("");
+    if (fenced) {
+      expect(argv).toContain("acceptEdits");
+      expect(argv).not.toContain("--tools");
+    } else {
+      expect(argv).not.toContain("acceptEdits");
+      // The vendor's read-only flag stays ON: every built-in tool removed, exactly as at level 1.
+      expect(argv[argv.indexOf("--tools") + 1]).toBe("");
+    }
   }, 60_000);
 
   test("level 3 (confirmed): the change is in --json, and not printed — act, not act-then-report", async () => {

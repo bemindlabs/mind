@@ -728,7 +728,11 @@ async function cmdSoulEdit(argv: readonly string[]): Promise<number> {
   return 0;
 }
 
-export async function cmdSoul(argv: readonly string[]): Promise<number> {
+/**
+ * `soul tune` is the command of `bin/commands/tune.ts` (S21.5): one command never imports another, so the
+ * entry point hands it in, and this switch is where `soul tune` is dispatched.
+ */
+export async function cmdSoul(argv: readonly string[], tune: (argv: readonly string[]) => Promise<number>): Promise<number> {
   const [sub, ...rest] = argv;
   switch (sub) {
     case "check":
@@ -745,9 +749,11 @@ export async function cmdSoul(argv: readonly string[]): Promise<number> {
       return cmdSoulCard(rest);
     case "edit":
       return cmdSoulEdit(rest);
+    case "tune":
+      return tune(rest);
     default:
       return usageError(
-        `unknown soul subcommand ${JSON.stringify(sub ?? "")} — try "check", "import", "apply", "verify", "revoke", "card" or "edit"`,
+        `unknown soul subcommand ${JSON.stringify(sub ?? "")} — try "check", "import", "apply", "verify", "revoke", "card", "edit" or "tune"`,
       );
   }
 }

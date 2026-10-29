@@ -44,7 +44,9 @@ function stubSource(shape: "json" | "text"): string {
 const argv = process.argv.slice(2);
 const flag = argv.indexOf("-p");
 const prompt = flag === -1 ? (argv[argv.length - 1] ?? "") : (argv[flag + 1] ?? "");
-const mode = process.env["MIND_STUB_MODE"] ?? "correct";
+// A fenced vendor inherits no environment (D-192), so the mode is also left beside the stub, which it can read.
+const fileMode = (() => { try { return require("node:fs").readFileSync(import.meta.dir + "/mode", "utf8").trim(); } catch { return undefined; } })();
+const mode = process.env["MIND_STUB_MODE"] ?? fileMode ?? "correct";
 if (mode === "silent") process.exit(0);
 
 const nonce = (prompt.match(/nothing else: (\\S+) followed/) ?? [])[1] ?? "";
@@ -123,6 +125,7 @@ interface RunOptions {
 }
 
 async function run(home: string, args: readonly string[], options: RunOptions = {}) {
+  if (options.stubMode !== undefined) await writeFile(join(home, "bin", "mode"), options.stubMode);
   const child = Bun.spawn([BUN, "run", BIN, ...args], {
     cwd: ROOT,
     env: {

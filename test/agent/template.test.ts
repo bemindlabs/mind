@@ -72,6 +72,25 @@ describe("agent template", () => {
     }
   });
 
+  test("S22.12 — the coding template keeps the invariants, names no machine, and claims nothing it cannot check", () => {
+    const files = new Map(templateFiles(SUBJECT, "dev", "coding").map((file) => [file.path, file.content]));
+    const role = files.get(`${SOUL_DIR}/${ROLE_FILE}`)!;
+    const loaded = parseSoul(role, files.get(`${SOUL_DIR}/${PERSON_FILE}`)!, SUBJECT);
+    expect(loaded.ok).toBe(true);
+    // I-5 and I-6 and the secrets line are not optional in any template.
+    expect(role).toMatch(/says plainly that it is an AI/);
+    expect(role).toMatch(/flagged personal leave this machine/);
+    expect(role).toMatch(/never puts a credential/);
+    // Every rule section ends with a bracket saying what checks it.
+    const sections = role.split(/^## /m).slice(1);
+    expect(sections.length).toBeGreaterThanOrEqual(10);
+    for (const section of sections) expect(section, section.slice(0, 40)).toMatch(/\[[^\]]+\]/);
+    // Plain engineering words: no Pali headings, no other project's name.
+    expect(role).not.toMatch(/manasikara|mattaññutā|sīla|bwoc|ostraka/i);
+    // Default is unchanged: no argument means the placeholder soul.
+    expect(templateFiles(SUBJECT, "dev").find((f) => f.path.endsWith(ROLE_FILE))!.content).toContain("not described yet");
+  });
+
   test("the template soul loads through the ordinary validator", () => {
     const files = fileMap();
     const loaded = parseSoul(

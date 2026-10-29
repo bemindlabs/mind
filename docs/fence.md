@@ -6,7 +6,8 @@ note in memory that says "read this file", or keep a key anywhere your user can 
 | turn | what holds it | reads | writes |
 |---|---|---|---|
 | a local CLI turn (`claude-local`, `grok-local`) | the kernel: a Landlock ruleset and a seccomp filter (D-118, D-123) | **only the places in the first table below** | only the vendor's home and scratch, and the working directory when the dial allows writing |
-| a cloud CLI turn (`claude`, `codex`, `grok`, `gemini`, `copilot`, `kimi`) | the vendor's own flags, which Mind passes and the vendor honours | **everything your user can read**, for every vendor that keeps a read tool or a shell | nothing at level 1; capped at level 1 whatever the dial says (D-163) |
+| a cloud CLI turn on `claude`, `codex` or `grok` with a tool (D-192) | the kernel, with a cloud policy: the same ruleset and filter, a home of Mind's own, TCP 443 and the name servers | the system directories, its working directory, its program and its home of Mind's own | its home, and the working directory when the dial allows writing |
+| a cloud CLI turn on `gemini`, `copilot`, `kimi`, or any vendor where the kernel has no Landlock | the vendor's own flags, which Mind passes and the vendor honours | **everything your user can read**, for every vendor that keeps a read tool or a shell | nothing at level 1; capped at level 1 whatever the dial says (D-163) |
 | an Ollama turn | there is no tool: it answers | nothing | nothing |
 
 "Read-only" on a cloud CLI means *it may not change anything*. It does not mean *it cannot open a file*. See
@@ -97,7 +98,7 @@ MIND_REAL_FENCE=1 bun test test/exec/fence-reads.real.test.ts
 `mind turn`, `mind web` and the fence's supervisor call `prctl(PR_SET_DUMPABLE, 0)` first thing. A program of the same
 user can read `/proc/<pid>/environ` and `mem` of any process that is dumpable, which is every process by default; the
 engine's environment holds the owner's cloud keys. With the flag at 0 those files belong to root. This is what closes
-the engine's environment to a **cloud** vendor CLI it starts, which the fence does not hold. The supervisor was a
+the engine's environment to a **cloud** vendor CLI it starts that the fence does not hold. The supervisor was a
 child of the vendor it supervises, readable and writable through `/proc/<pid>/mem` by ancestry; it no longer is
 (EXEC-07).
 
@@ -125,21 +126,49 @@ section is changed with it.
 
 ## Cloud CLIs: read-only is not cannot-read
 
-`mind backends` prints, from the registry, which vendors keep a read tool or a shell at level 1. Of the six, `claude`
-alone is started with no tools at all (`--tools ""`). `codex` runs `--sandbox read-only` and commands still run;
-`grok` keeps `read_file,grep,list_dir`; `kimi` keeps `Read`, `Glob`, `Grep`; `gemini` runs in `plan`; `copilot` denies
-only `shell` and `write`. Every one of those runs as you.
+And so, since D-192, the cloud turns that have a tool are fenced where Mind knows how.
 
-So a recalled note, an imported page or a message from someone you allowed on Telegram that says *read
-`~/.ssh/id_ed25519` and quote it* can send that file to the vendor, and Mind will not see it. The egress screen (I-6:
-needles, six shapes, an optional local judge) runs on **the prompt and system text Mind sends**. What a vendor's own
-tool opens afterwards is not seen, and the ledger records only the prompt.
+`mind backends` prints, from the registry and this kernel, which vendors keep a read tool or a shell at level 1 and
+which of them Mind fences. Of the six, `claude` alone is started with no tools at all at level 1 (`--tools ""`).
+`codex` runs `--sandbox read-only` and commands still run; `grok` keeps `read_file,grep,list_dir`; `kimi` keeps `Read`,
+`Glob`, `Grep`; `gemini` runs in `plan`; `copilot` denies only `shell` and `write`.
 
-What to do today: leave `codex`, `grok`, `kimi`, `gemini` and `copilot` out of a chain that takes input you do not
-control (`--backend claude,ollama`), and keep secrets out of any directory a cloud turn runs in. `mind doctor` says
-this on every run, under *what a turn can read*. What would close it is the same fence for cloud turns — an empty
-scratch directory as the working directory, a scratch `HOME` holding only the vendor's login, and read rules for the
-vendor's install tree — which is not done.
+**Fenced: `claude`, `codex` and `grok`** (the vendors whose home and login were measured, `VendorSpec.cloudHome`). Every turn of
+theirs that has a tool — every level for `codex`, level 2 and above (or any level with a browser) for `claude` — runs
+through the same helper and supervisor as a local turn, with a cloud policy:
+
+- **A home of Mind's own** per vendor and subject, `<state root>/vendors/<vendor>/subjects/<subject>/`: `HOME`,
+  `CLAUDE_CONFIG_DIR` / `CODEX_HOME` and `TMPDIR` point there, and the child inherits nothing from Mind's environment but
+  `PATH`, the shell basics and the vendor's own login variables. It writes only that home, and its working directory
+  at level 2 and above; it reads the system directories, its working directory, its program and that home. Your
+  `~/.claude` and `~/.codex` — every other session's transcripts — are not readable to it, nor is the rest of your
+  home.
+- **The login is a managed copy.** The credential file (`~/.claude/.credentials.json`, `~/.codex/auth.json`, `~/.grok/auth.json`) is copied
+  into the home before each turn. When the vendor refreshes it during the turn, the refreshed one is written back to
+  your file — only if your file is still the one that was copied — because a refresh can rotate the refresh token and
+  leave your own CLI logged out. claude replaces the file through a temporary file and a rename and refuses a
+  symlink, so no grant on your file could work. The cost: the vendor's own tools can read the vendor's own login.
+- **Network: TCP to port 443** at any address that is not loopback, and the name servers of `/etc/resolv.conf` on
+  port 53. Nothing else: no loopback service (LiteLLM, ollama, the docker socket), no other port, no QUIC. glibc asks
+  its resolver over TCP (`RES_OPTIONS=use-vc`); a static musl program (codex) sends UDP, which the supervisor sends
+  for it, from its own copy, to a name server only. Only the vendor's own process reaches the network: a command its
+  shell runs (`curl`, `git fetch`) is refused, because the supervisor may read the memory of the process it started
+  and nothing below it (Yama). For the same reason codex is started as its native binary, not through npm's launcher.
+- **codex at level 2** gets `--sandbox danger-full-access` inside the fence: its own `workspace-write` bubblewrap
+  cannot start on a kernel that restricts user namespaces, and the kernel fence holds what it would.
+
+**Not fenced: `gemini`, `copilot`, `kimi`** (kimi needs its whole `config.toml`, not only its login; gemini and copilot were not measured), and every vendor on a kernel without Landlock ABI 4 (macOS among
+them). Their turns run as you, can open any file you can open and send it to the vendor, and each one says so before
+it is sent. A cloud turn the fence does not hold stays capped at write/run 1 (D-163).
+
+What the fence does not close: whatever a fenced turn reads in its working directory it can still send to the vendor,
+and the egress screen (I-6) sees only **the prompt and system text Mind sends**; a name lookup can carry data to the
+resolver; a service of this machine listening on port 443 of a non-loopback address is reachable. So keep secrets out
+of any directory a cloud turn runs in, and keep the unfenced vendors out of a chain that takes input you do not
+control. `mind doctor` says which are which on every run, under *what a turn can read*.
+
+The real check, opt-in because it spends three real turns: `MIND_REAL_CLOUD_FENCE=1 bun test
+test/exec/cloud-fence.real.test.ts`.
 
 ## `mind doctor`
 

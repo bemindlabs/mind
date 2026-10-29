@@ -38,7 +38,11 @@ describe("readonlyLimits(): read-only is not cannot-read", () => {
     const printed = readonlyLimits().join("\n");
     expect(printed).toContain(SENTENCE);
     const line = readonlyLimits().find((entry) => entry.startsWith(SENTENCE))!;
-    for (const id of ["codex", "grok", "gemini", "copilot", "kimi"]) expect(line, id).toContain(id);
+    for (const id of ["gemini", "copilot", "kimi"]) expect(line, id).toContain(id);
+    // D-192: codex and grok keep their tools too, and are fenced, so they are named in the fenced sentence instead.
+    expect(line).not.toContain("codex");
+    expect(line).not.toContain("grok");
+    expect(readonlyLimits().find((entry) => entry.startsWith("codex, grok keep file-reading tools"))).toContain("kernel fence (D-192)");
     expect(line).toContain("claude is started with no tools at all");
     // The sentence that names who can read does not name the one that cannot among them.
     expect(line.split("keep file-reading tools")[0]).not.toContain("claude");

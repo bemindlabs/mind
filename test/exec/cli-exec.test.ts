@@ -22,6 +22,7 @@ import { realpathSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { TOOL_FREE_INSTRUCTION } from "../../src/exec/tool-output.ts";
 import { CliExec, extractReply, extractUsage, reportedModels, unfinished } from "../../src/exec/cli-exec.ts";
 import { procStat, type ProcStat } from "../../src/decide/runs.ts";
 import { modelArgs, restraintArgs, vendor, type ModelSpec, type ReadOnlySpec, type VendorSpec } from "../../src/exec/registry.ts";
@@ -92,6 +93,7 @@ if (mode === "hang") {
   const stop = process.env["MIND_STUB_STOP"];
   if (stop) payload.stopReason = stop;
   if (process.env["MIND_STUB_BLANK"]) payload.result = "";
+  if (process.env["MIND_STUB_REPLY"]) payload.result = process.env["MIND_STUB_REPLY"];
 
   // Whatever a case wants in the vendor's own accounting block, verbatim.
   const usage = process.env["MIND_STUB_USAGE"];
@@ -107,6 +109,7 @@ if (mode === "hang") {
   if (onStderr) console.error(onStderr);
 
   console.log(JSON.stringify(payload));
+  if (process.env["MIND_STUB_HOLD"]) setInterval(() => {}, 60_000);
 
   const code = process.env["MIND_STUB_EXIT"];
   if (code) process.exit(Number(code));
@@ -1628,5 +1631,54 @@ describe("a turn handed a task's browser (D-155)", () => {
     expect(result.confidence).toBe("silent");
     expect(result.evidence.raw).toContain("operate is 0");
     expect(await readdir(dir)).toEqual([]);
+  });
+});
+
+
+describe("tool-free replies cannot masquerade as executed tools", () => {
+  const noTools = { kind: "allow-tools", flag: "--tools", values: [""], evidence: "probed" } as const;
+  const invocation = '<invoke name="Read">\n<parameter name="file_path">/work/CHANGELOG.md</parameter>\n</invoke>';
+  test("the child receives the capability limit along with its identity", async () => {
+    const result = await new CliExec(stubSpec(binary, { readOnly: noTools })).run({
+      restraint: RESTRAINED, subject: SUBJECT, prompt: "Read the roadmap", system: "You are the product engineer.", env: { HOME: await tempHome() },
+    });
+    const argv = seen(result.text).argv;
+    expect(argv.at(-1)).toContain("You are the product engineer.");
+    expect(argv.at(-1)).toContain(TOOL_FREE_INSTRUCTION);
+    expect(result.confidence).toBe("confirmed");
+  });
+  test("exit zero with raw invocation XML is failed and preserves the vendor evidence", async () => {
+    const result = await new CliExec(stubSpec(binary, { readOnly: noTools })).run({
+      restraint: RESTRAINED, subject: SUBJECT, prompt: "Read the roadmap", env: { HOME: await tempHome(), MIND_STUB_REPLY: invocation },
+    });
+    expect(result.confidence).toBe("failed");
+    expect(result.text).toContain("not executed");
+    expect(JSON.parse(result.evidence.raw.split("\n").slice(1).join("\n")).result).toBe(invocation);
+  });
+  test("an interrupted invocation keeps its timeout and stderr evidence", async () => {
+    const result = await new CliExec(stubSpec(binary, { readOnly: noTools })).run({
+      restraint: RESTRAINED, subject: SUBJECT, prompt: "Read the roadmap", timeoutMs: 250,
+      env: { HOME: await tempHome(), MIND_STUB_REPLY: invocation, MIND_STUB_HOLD: "1", MIND_STUB_STDERR: "unfinished vendor operation" },
+    });
+    expect(result.confidence).toBe("silent");
+    expect(result.text).toBe(invocation);
+    expect(result.evidence.raw).toContain("timed out after 250ms");
+    expect(result.evidence.raw).toContain("unfinished vendor operation");
+  }, 10_000);
+  test("a vendor-cancelled invocation keeps the completion and stderr diagnostics", async () => {
+    const result = await new CliExec(stubSpec(binary, { readOnly: noTools, completion: { pointer: "/stopReason", value: "end_turn" } })).run({
+      restraint: RESTRAINED, subject: SUBJECT, prompt: "Read the roadmap",
+      env: { HOME: await tempHome(), MIND_STUB_REPLY: invocation, MIND_STUB_STOP: "cancelled", MIND_STUB_EXIT: "1", MIND_STUB_STDERR: "max turns reached" },
+    });
+    expect(result.confidence).toBe("silent");
+    expect(result.text).toBe(invocation);
+    expect(result.evidence.raw).toStartWith('ended "cancelled", not "end_turn"');
+    expect(result.evidence.raw).toContain("max turns reached");
+  });
+  test("fenced examples are valid explanations", async () => {
+    const result = await new CliExec(stubSpec(binary, { readOnly: noTools })).run({
+      restraint: RESTRAINED, subject: SUBJECT, prompt: "Explain XML", env: { HOME: await tempHome(), MIND_STUB_REPLY: "Example:\n```xml\n" + invocation + "\n```" },
+    });
+    expect(result.confidence).toBe("confirmed");
   });
 });

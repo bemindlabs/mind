@@ -15,3 +15,5 @@ export * from "./taint-watch.ts";
 export * from "./unit.ts";
 export * from "./backend-ready.ts";
 export * from "./term.ts";
+export * from "./rest.ts";
+export * from "./tick.ts";

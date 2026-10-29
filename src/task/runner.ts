@@ -50,7 +50,11 @@ import { readFile } from "node:fs/promises";
 import { activeLimitMs, budgetSpent } from "./budget.ts";
 import { LEFT_EXIT_CODE } from "./unit.ts";
 import { DEFAULT_BACKEND_WAIT_MINUTES, type BackendState } from "./backend-ready.ts";
+import { MAX_GATE_RED, redNote, type Handoff } from "./gate.ts";
 import { TASK_BLOCK, planPrompt, readPlan, readStep, stepPrompt } from "./prompt.ts";
+
+/** S22.10: a task parked because its backend did not come back in time may be tried again after this long. */
+export const RETRY_PARKED_AFTER_MS = 10 * 60_000;
 import {
   alive,
   isFinal,
@@ -76,6 +80,8 @@ export interface StepTurn {
   readonly text: string;
   readonly turnId: string | null;
   readonly backend: string | null;
+  /** S22.14: the model the backend's own output named (never an alias), or `null` when it named none. */
+  readonly model?: string | null;
   /** Input + output tokens, or `null` when the backend did not say. */
   readonly tokens: number | null;
   readonly ms: number;
@@ -135,6 +141,18 @@ export interface RunnerDeps {
   readonly backendPollMs?: number;
   /** S18.1: this runner is being ended from outside with no stop asked; it leaves the task for `task resume`. */
   readonly leaving?: () => boolean;
+  /**
+   * S22.14: told once when the task ends (done, failed, stopped or out of budget), after its record is final, so one
+   * line of measurement can be kept. A failure here is the measurement's, never the task's: it is swallowed.
+   */
+  readonly measure?: (record: TaskRecord) => Promise<void>;
+  /**
+   * S22.12 AC2: runs the task's gate (`record.gate`) in its worktree and says whether it passed and what it printed.
+   * Absent, or a task with no gate: the bot's own "done" ends the task, as before.
+   */
+  readonly gate?: (record: TaskRecord) => Promise<{ readonly pass: boolean; readonly output: string }>;
+  /** S22.12 AC2: reads git for the handoff of a task whose gate was green. `undefined` when it cannot be read. */
+  readonly handoff?: (record: TaskRecord) => Promise<Handoff | undefined>;
 }
 
 /** A task's record disappeared under its runner — erased (I-4). The runner stops and writes nothing more. */
@@ -214,7 +232,8 @@ export async function runTask(start: TaskRecord, deps: RunnerDeps): Promise<RunO
     deps.say(`task ${record.id}: step ${open.n} was interrupted; carrying on from there`);
   }
   // A parked task's reason was why it was parked; carried on, that is history.
-  await save({ ...resumed, status: record.plan === null ? "planning" : "running", statusAt: at(), ...(record.status === "parked" ? { reason: null } : {}) });
+  const { resumeAfter: _carriedOn, ...withoutResumeAfter } = resumed;
+  await save({ ...withoutResumeAfter, status: record.plan === null ? "planning" : "running", statusAt: at(), ...(record.status === "parked" ? { reason: null } : {}) });
 
   let browserUp = false;
   try {
@@ -252,6 +271,12 @@ export async function runTask(start: TaskRecord, deps: RunnerDeps): Promise<RunO
       const since = deps.now().getTime();
       const limitMs = (record.backendWaitMinutes ?? DEFAULT_BACKEND_WAIT_MINUTES) * 60_000;
       const working: TaskStatus = record.plan === null ? "planning" : "running";
+      // S22.10: a backend that is due back later than this task would wait is not waited for: the task is parked with
+      // the time it can go on, and `mind task tick` carries it on then, instead of a runner sleeping for hours.
+      if (state.retryAt !== undefined && state.retryAt - since > limitMs) {
+        const when = new Date(state.retryAt).toISOString();
+        return await finish("parked", `${state.reason} — parked until ${when}; \`mind task tick\` or \`mind task resume\` carries it on`, when);
+      }
       await save(setStatus("waiting-backend", `waiting for its backend: ${state.reason}`));
       deps.say(`task ${record.id}: waiting for its backend — ${state.reason}`);
       for (;;) {
@@ -263,6 +288,7 @@ export async function runTask(start: TaskRecord, deps: RunnerDeps): Promise<RunO
           return await finish(
             "parked",
             `its backend was not ready for ${Math.round(waited / 60_000)} min (${state.reason}) — \`mind task resume\` carries it on, \`mind task stop\` ends it`,
+            new Date(deps.now().getTime() + RETRY_PARKED_AFTER_MS).toISOString(),
           );
         }
         await new Promise((resolve) => setTimeout(resolve, Math.min(deps.backendPollMs ?? 5000, Math.max(1, limitMs - waited))));
@@ -277,6 +303,7 @@ export async function runTask(start: TaskRecord, deps: RunnerDeps): Promise<RunO
     };
 
     let failedInARow = 0;
+    let gateRed = 0;
     let unreadableInARow = 0;
     for (;;) {
       if (deps.stopping() || (await stopRequested(taskDir))) return await finish("stopped", "it was asked to stop");
@@ -389,6 +416,7 @@ export async function runTask(start: TaskRecord, deps: RunnerDeps): Promise<RunO
         finishedAt: at(),
         turnId: ran.turnId,
         backend: ran.backend,
+        model: ran.model ?? null,
         exit: ran.code,
         outcome,
         summary,
@@ -436,6 +464,24 @@ export async function runTask(start: TaskRecord, deps: RunnerDeps): Promise<RunO
       unreadableInARow = 0;
       if (finished.done) {
         const result = kind === "step" && read.ok && "result" in read ? read.result : null;
+        if (record.gate !== undefined && deps.gate !== undefined) {
+          const checked = await deps.gate(record);
+          const typed = record.gate.join(" ");
+          if (!checked.pass) {
+            gateRed += 1;
+            await save({
+              ...record,
+              steps: [...record.steps.slice(0, -1), { ...finished, done: false, summary: `${finished.summary} — but the gate \`${typed}\` is red` }],
+              notes: [...record.notes, redNote(typed, checked.output, gateRed)],
+            });
+            deps.say(`task ${record.id}: the gate \`${typed}\` is red (${gateRed} of ${MAX_GATE_RED}) — the goal is not reached`);
+            if (gateRed >= MAX_GATE_RED) return await finish("failed", `the gate \`${typed}\` was still red after ${gateRed} tries`);
+            continue;
+          }
+          const handoff = await deps.handoff?.(record).catch(() => undefined);
+          await save({ ...record, result: result ?? finished.summary, ...(handoff === undefined ? {} : { handoff }) });
+          return await finish("done", handoff === undefined ? `the goal was reached and the gate \`${typed}\` is green; the handoff could not be read from git` : `the goal was reached and the gate \`${typed}\` is green; ready for a person to merge`);
+        }
         await save({ ...record, result: result ?? finished.summary });
         return await finish("done", "the goal was reached");
       }
@@ -485,13 +531,14 @@ export async function runTask(start: TaskRecord, deps: RunnerDeps): Promise<RunO
     return { ok: false, reason: `task ${record.id} was left for \`task resume\`: its runner was ended from outside`, code: LEFT_EXIT_CODE };
   }
 
-  async function finish(status: TaskStatus, reason: string): Promise<RunOutcome> {
+  async function finish(status: TaskStatus, reason: string, resumeAfter?: string): Promise<RunOutcome> {
     if (browserUp && deps.browserDown !== undefined) {
       await deps.browserDown(record).catch(() => undefined);
       browserUp = false;
     }
-    await save({ ...setStatus(status, reason), runner: null, current: null, browser: null });
+    await save({ ...setStatus(status, reason), runner: null, current: null, browser: null, ...(resumeAfter === undefined ? {} : { resumeAfter }) });
     deps.say(`task ${record.id}: ${status} — ${reason}`);
+    if (isFinal(status)) await deps.measure?.(record).catch(() => undefined);
     return { ok: true, record };
   }
 }

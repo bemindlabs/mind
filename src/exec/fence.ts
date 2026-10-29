@@ -20,14 +20,51 @@
  */
 
 import { CString, dlopen, ptr, read, toArrayBuffer } from "bun:ffi";
-import { closeSync, existsSync, openSync, readlinkSync, readSync, realpathSync, statSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, readlinkSync, readSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, isAbsolute, join } from "node:path";
 import { isInside } from "./workdir.ts";
 
 /** Paths and loopback service ports a local turn may change or connect to. */
 export interface FencePolicy {
   readonly writable: readonly string[];
+  /** TCP ports on 127.0.0.1 only: the local services a turn may reach (LiteLLM, a task's browser). */
   readonly tcpPorts: readonly number[];
+  /**
+   * D-192, a cloud turn: TCP ports the turn may connect to at any address that is not loopback (`127.0.0.0/8`)
+   * or `0.0.0.0/8`. Absent or empty on a local turn, which keeps D-123's loopback-only rule unchanged.
+   */
+  readonly remotePorts?: readonly number[];
+  /**
+   * D-192: the name servers a cloud turn may ask, as IPv4 literals, reached on TCP port 53 and nowhere else.
+   * UDP stays refused (the seccomp filter allows no datagram socket), so the vendor is started with
+   * `RES_OPTIONS=use-vc` and the C library asks over TCP.
+   */
+  readonly resolvers?: readonly string[];
+  /** D-192: paths (files or directories) the turn may read beyond {@link readGrants}' own list. */
+  readonly readable?: readonly string[];
+}
+
+/** The port a name server listens on; granted only towards {@link FencePolicy.resolvers}. */
+export const DNS_PORT = 53;
+
+/** Every TCP port Landlock must allow for this policy: the loopback ones, the remote ones, and DNS when asked. */
+export function landlockPorts(policy: FencePolicy): number[] {
+  return [
+    ...new Set([
+      ...policy.tcpPorts,
+      ...(policy.remotePorts ?? []),
+      ...((policy.resolvers ?? []).length > 0 ? [DNS_PORT] : []),
+    ]),
+  ];
+}
+
+const IPV4_LITERAL = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+
+/** An IPv4 dotted literal as the four bytes a `sockaddr_in` carries, or `undefined` when it is not one. */
+export function ipv4Bytes(literal: string): readonly [number, number, number, number] | undefined {
+  if (!IPV4_LITERAL.test(literal)) return undefined;
+  const [a, b, c, d] = literal.split(".").map(Number) as [number, number, number, number];
+  return [a, b, c, d];
 }
 
 /** What this kernel can enforce, probed once because its ABI cannot change. */
@@ -104,6 +141,14 @@ const AF_INET = 2;
 const AF_INET6 = 10;
 const SOCK_STREAM = 1;
 const SOCK_SEQPACKET = 5;
+const SOCK_DGRAM = 2;
+const IPPROTO_UDP = 17;
+const SO_TYPE = 3;
+const MSG_DONTWAIT = 0x40;
+const MSG_NOSIGNAL = 0x4000;
+/** Unified syscall numbers (x86_64 and the generic table alike), Linux 5.3 and 5.6. */
+const SYS_PIDFD_OPEN = 434;
+const SYS_PIDFD_GETFD = 438;
 const SOCK_CLOEXEC = 0x08_0000;
 const IPPROTO_TCP = 6;
 const SOL_SOCKET = 1;
@@ -199,6 +244,8 @@ function libc() {
     socketpair: { args: ["i32", "i32", "i32", "ptr"], returns: "i32" },
     socket: { args: ["i32", "i32", "i32"], returns: "i32" },
     connect: { args: ["i32", "ptr", "u32"], returns: "i32" },
+    getsockopt: { args: ["i32", "i32", "i32", "ptr", "ptr"], returns: "i32" },
+    sendto: { args: ["i32", "ptr", "u64", "i32", "ptr", "u32"], returns: "i64" },
     fcntl: { args: ["i32", "i32", "i32"], returns: "i32" },
     posix_spawn: { args: ["ptr", "cstring", "ptr", "ptr", "ptr", "ptr"], returns: "i32" },
     sendmsg: { args: ["i32", "ptr", "i32"], returns: "i64" },
@@ -220,7 +267,7 @@ type Libc = ReturnType<typeof libc>;
 export interface FenceHelperRuntime {
   readonly support: () => FenceSupport;
   readonly openLibc: () => Libc;
-  readonly secureNetwork: (lib: Libc, tcpPorts: readonly number[]) => void;
+  readonly secureNetwork: (lib: Libc, tcpPorts: readonly number[], remote?: RemoteRule) => void;
   /** The directory the helper was started in; the kernel's own record of it when left out. */
   readonly cwd?: () => string;
 }
@@ -471,10 +518,17 @@ function policyProblem(policy: FencePolicy): string | undefined {
       return `writable path could not be inspected: ${JSON.stringify(path)} (${String(cause)})`;
     }
   }
-  for (const port of policy.tcpPorts) {
+  for (const port of [...policy.tcpPorts, ...(policy.remotePorts ?? [])]) {
     if (!Number.isInteger(port) || port < 1 || port > 65_535) {
       return `TCP port is not a whole number from 1 to 65535: ${JSON.stringify(port)}`;
     }
+  }
+  for (const resolver of policy.resolvers ?? []) {
+    if (ipv4Bytes(resolver) === undefined) return `name server is not an IPv4 literal: ${JSON.stringify(resolver)}`;
+  }
+  for (const path of policy.readable ?? []) {
+    if (!isAbsolute(path)) return `readable path is not absolute: ${JSON.stringify(path)}`;
+    if (!existsSync(path)) return `readable path does not exist: ${JSON.stringify(path)}`;
   }
   return undefined;
 }
@@ -505,6 +559,9 @@ export function fencedArgv(argv: readonly string[], policy: FencePolicy): string
     "--confine-reads",
     ...policy.writable.flatMap((path) => ["--rw", path]),
     ...policy.tcpPorts.flatMap((port) => ["--tcp-port", String(port)]),
+    ...(policy.remotePorts ?? []).flatMap((port) => ["--remote-port", String(port)]),
+    ...(policy.resolvers ?? []).flatMap((resolver) => ["--resolver", resolver]),
+    ...(policy.readable ?? []).flatMap((path) => ["--ro", path]),
     "--",
     ...argv,
   ];
@@ -529,6 +586,9 @@ export function parseFenceHelperArgv(argv: readonly string[]): ParsedHelper {
 
   const writable: string[] = [];
   const tcpPorts: number[] = [];
+  const remotePorts: number[] = [];
+  const resolvers: string[] = [];
+  const readable: string[] = [];
   let confineReads = false;
   let index = 0;
   while (index < boundary) {
@@ -544,10 +604,20 @@ export function parseFenceHelperArgv(argv: readonly string[]): ParsedHelper {
     }
     if (flag === "--rw") writable.push(value);
     else if (flag === "--tcp-port") tcpPorts.push(Number(value));
+    else if (flag === "--remote-port") remotePorts.push(Number(value));
+    else if (flag === "--resolver") resolvers.push(value);
+    else if (flag === "--ro") readable.push(value);
     else return { ok: false, reason: `unknown option ${JSON.stringify(flag)}` };
     index += 2;
   }
-  const policy = { writable, tcpPorts };
+  // The cloud fields only when given, so a local turn's policy reads exactly as it always has.
+  const policy: FencePolicy = {
+    writable,
+    tcpPorts,
+    ...(remotePorts.length > 0 ? { remotePorts } : {}),
+    ...(resolvers.length > 0 ? { resolvers } : {}),
+    ...(readable.length > 0 ? { readable } : {}),
+  };
   const problem = policyProblem(policy);
   if (problem !== undefined) return { ok: false, reason: `invalid fence policy: ${problem}` };
   return confineReads ? { ok: true, policy, confineReads: true, command } : { ok: true, policy, command };
@@ -645,7 +715,10 @@ const RET_K = 0x06;
  * for exactly long enough to pass the new listener over the already-created
  * AF_UNIX socket; a second stacked filter closes it before exec.
  */
-function networkFilter(architecture: SeccompArchitecture): Uint8Array {
+function networkFilter(architecture: SeccompArchitecture, datagram = false): Uint8Array {
+  // D-192: a cloud turn's name lookups. With `datagram`, an AF_INET UDP socket may be created and a `sendto`
+  // that names a destination goes to the supervisor, which sends it itself — only to a name server on port 53.
+  // Without it (every local turn) both stay refused, exactly as D-123 built them.
   return bpf([
     { code: LD_W_ABS, k: 4 },
     { code: JMP_JEQ_K, k: architecture.audit, jt: 1 },
@@ -666,9 +739,9 @@ function networkFilter(architecture: SeccompArchitecture): Uint8Array {
     // Bun/libuv. Its destination is the already-supervised socket, and both
     // halves of the captured 64-bit pointer are immutable scalar arguments.
     { code: LD_W_ABS, k: 48, label: "sendto" },
-    { code: JMP_JEQ_K, k: 0, jf: "eperm" },
+    { code: JMP_JEQ_K, k: 0, jf: datagram ? "notify" : "eperm" },
     { code: LD_W_ABS, k: 52 },
-    { code: JMP_JEQ_K, k: 0, jt: "send_allowed", jf: "eperm" },
+    { code: JMP_JEQ_K, k: 0, jt: "send_allowed", jf: datagram ? "notify" : "eperm" },
     { code: RET_K, k: SECCOMP_RET_ALLOW, label: "send_allowed" },
 
     { code: LD_W_ABS, k: 16, label: "socket" },
@@ -678,10 +751,14 @@ function networkFilter(architecture: SeccompArchitecture): Uint8Array {
 
     { code: LD_W_ABS, k: 24, label: "inet_socket" },
     { code: ALU_AND_K, k: 0xf },
-    { code: JMP_JEQ_K, k: SOCK_STREAM, jt: "inet_protocol", jf: "eperm" },
+    { code: JMP_JEQ_K, k: SOCK_STREAM, jt: "inet_protocol", jf: "inet_dgram" },
     { code: LD_W_ABS, k: 32, label: "inet_protocol" },
     { code: JMP_JEQ_K, k: 0, jt: "allow" },
     { code: JMP_JEQ_K, k: IPPROTO_TCP, jt: "allow", jf: "eperm" },
+    { code: JMP_JEQ_K, k: datagram ? SOCK_DGRAM : 0xffff_ffff, jt: "udp_protocol", jf: "eperm", label: "inet_dgram" },
+    { code: LD_W_ABS, k: 32, label: "udp_protocol" },
+    { code: JMP_JEQ_K, k: 0, jt: "allow" },
+    { code: JMP_JEQ_K, k: IPPROTO_UDP, jt: "allow", jf: "eperm" },
 
     { code: LD_W_ABS, k: 24, label: "unix_socket" },
     { code: ALU_AND_K, k: 0xf },
@@ -760,7 +837,7 @@ function sendFd(lib: Libc, channel: number, fd: number): void {
 }
 
 /** Start the clean supervisor process under Landlock but before seccomp. */
-function spawnSupervisor(lib: Libc, channel: number, tcpPorts: readonly number[]): number {
+function spawnSupervisor(lib: Libc, channel: number, tcpPorts: readonly number[], remote: RemoteRule = NO_REMOTE): number {
   const prefix = Bun.main.endsWith(".ts") && isAbsolute(Bun.main) && existsSync(Bun.main)
     ? [process.execPath, "run", Bun.main]
     : [process.execPath];
@@ -770,6 +847,8 @@ function spawnSupervisor(lib: Libc, channel: number, tcpPorts: readonly number[]
     "--control-fd",
     String(channel),
     ...tcpPorts.flatMap((port) => ["--tcp-port", String(port)]),
+    ...remote.ports.flatMap((port) => ["--remote-port", String(port)]),
+    ...remote.resolvers.flatMap((resolver) => ["--resolver", resolver]),
   ]);
   // The supervisor needs no ambient configuration, and inheriting the
   // vendor's credential-bearing environment would widen what this fixed child
@@ -793,7 +872,7 @@ function spawnSupervisor(lib: Libc, channel: number, tcpPorts: readonly number[]
  * Start the supervisor, install both filters, transfer the listener, and wait
  * for its acknowledgement. Any missing step throws before the vendor execs.
  */
-function secureNetwork(lib: Libc, tcpPorts: readonly number[]): void {
+function secureNetwork(lib: Libc, tcpPorts: readonly number[], remote: RemoteRule = NO_REMOTE): void {
   const architecture = SECCOMP_ARCHITECTURES[process.arch];
   if (architecture === undefined) throw new Error(`unsupported seccomp architecture ${process.arch}`);
 
@@ -810,7 +889,10 @@ function secureNetwork(lib: Libc, tcpPorts: readonly number[]): void {
     if (fdFlags < 0 || lib.symbols.fcntl(supervisorChannel, F_SETFD, fdFlags & ~FD_CLOEXEC) !== 0) {
       throw new Error(`fcntl(seccomp supervisor channel): ${lastError(lib)}`);
     }
-    supervisor = spawnSupervisor(lib, supervisorChannel, [...new Set(tcpPorts)]);
+    supervisor = spawnSupervisor(lib, supervisorChannel, [...new Set(tcpPorts)], {
+      ports: [...new Set(remote.ports)],
+      resolvers: [...new Set(remote.resolvers)],
+    });
     lib.symbols.close(supervisorChannel);
     // The notifier is a child of this helper, while process_vm_readv normally
     // grants a parent access to its child. Name this one fixed child explicitly
@@ -819,7 +901,7 @@ function secureNetwork(lib: Libc, tcpPorts: readonly number[]): void {
       throw new Error(`prctl(PR_SET_PTRACER, seccomp supervisor): ${lastError(lib)}`);
     }
 
-    listener = installFilter(lib, architecture, networkFilter(architecture), true);
+    listener = installFilter(lib, architecture, networkFilter(architecture, remote.resolvers.length > 0), true);
     sendFd(lib, targetChannel, listener);
     installFilter(lib, architecture, noSendmsgFilter(architecture), false);
     lib.symbols.close(listener);
@@ -918,16 +1000,59 @@ function readSockaddr(lib: Libc, pid: number, remoteAddress: bigint, length: big
   return lib.symbols.process_vm_readv(pid, local, 1, remote, 1, 0) === 16n ? address : undefined;
 }
 
-function allowedAddress(address: Uint8Array, ports: ReadonlySet<number>): boolean {
+/**
+ * What a cloud turn may reach besides loopback ports (D-192): TCP ports at any address that is not loopback, and
+ * the name servers on {@link DNS_PORT}. Empty for a local turn.
+ */
+export interface RemoteRule {
+  readonly ports: readonly number[];
+  readonly resolvers: readonly string[];
+}
+
+const NO_REMOTE: RemoteRule = { ports: [], resolvers: [] };
+
+/** The supervisor's own copy of a {@link RemoteRule}, in the shapes it compares against. */
+interface RemoteSets {
+  readonly ports: ReadonlySet<number>;
+  readonly resolvers: ReadonlySet<string>;
+}
+
+const NO_REMOTE_SETS: RemoteSets = { ports: new Set(), resolvers: new Set() };
+
+/**
+ * One copied `sockaddr_in`, judged. Three ways in and no other:
+ * - `127.0.0.1` on one of the loopback `ports` (D-123, the local turn's rule, unchanged);
+ * - a name server of `remote.resolvers` on port 53 (D-192);
+ * - any address that is not loopback (`127.0.0.0/8`) nor `0.0.0.0/8` on one of `remote.ports` (D-192).
+ * Anything that is not AF_INET is refused: IPv6 sockets are never created and AF_UNIX connects come here too.
+ */
+function allowedAddress(address: Uint8Array, ports: ReadonlySet<number>, remote: RemoteSets = NO_REMOTE_SETS): boolean {
   const view = new DataView(address.buffer, address.byteOffset, address.byteLength);
-  return (
-    view.getUint16(0, true) === AF_INET &&
-    address[4] === 127 &&
-    address[5] === 0 &&
-    address[6] === 0 &&
-    address[7] === 1 &&
-    ports.has(view.getUint16(2, false))
-  );
+  if (view.getUint16(0, true) !== AF_INET) return false;
+  const port = view.getUint16(2, false);
+  const host = `${address[4]}.${address[5]}.${address[6]}.${address[7]}`;
+  if (host === "127.0.0.1" && ports.has(port)) return true;
+  if (port === DNS_PORT && remote.resolvers.has(host)) return true;
+  const loopback = address[4] === 127 || address[4] === 0;
+  return !loopback && remote.ports.has(port);
+}
+
+/**
+ * Whether the target's own socket was non-blocking, from `/proc/<pid>/fdinfo/<fd>` (the `flags:` field, octal).
+ * Unreadable means yes, the behaviour before D-192, because every runtime the fence was measured with (Bun, Node)
+ * uses non-blocking sockets. It decides only whether a call on the socket waits; nothing about where it goes.
+ */
+export function targetNonBlocking(pid: number, fd: number, read: (path: string) => string = readProc): boolean {
+  try {
+    const flags = /^flags:\s*([0-7]+)/m.exec(read(`/proc/${pid}/fdinfo/${fd}`));
+    return flags === null ? true : (parseInt(flags[1]!, 8) & O_NONBLOCK) !== 0;
+  } catch {
+    return true;
+  }
+}
+
+function readProc(path: string): string {
+  return readFileSync(path, "utf8");
 }
 
 /**
@@ -935,7 +1060,13 @@ function allowedAddress(address: Uint8Array, ports: ReadonlySet<number>): boolea
  * atomically replacing the target fd. The target's sockaddr is only input to
  * this local copy; its original `connect` is never continued.
  */
-function handleConnect(lib: Libc, listener: number, notification: Uint8Array, ports: ReadonlySet<number>): void {
+function handleConnect(
+  lib: Libc,
+  listener: number,
+  notification: Uint8Array,
+  ports: ReadonlySet<number>,
+  remote: RemoteSets = NO_REMOTE_SETS,
+): void {
   const view = new DataView(notification.buffer, notification.byteOffset, notification.byteLength);
   const id = view.getBigUint64(0, true);
   const pid = view.getUint32(8, true);
@@ -943,13 +1074,42 @@ function handleConnect(lib: Libc, listener: number, notification: Uint8Array, po
   const remoteAddress = view.getBigUint64(40, true);
   const length = view.getBigUint64(48, true);
   const address = readSockaddr(lib, pid, remoteAddress, length);
-  if (address === undefined || !allowedAddress(address, ports) || targetFd > 0x7fff_ffffn) {
+  if (address === undefined || !allowedAddress(address, ports, remote) || targetFd > 0x7fff_ffffn) {
     sendNotificationError(lib, listener, id, EPERM);
     return;
   }
 
   const validId = new BigUint64Array([id]);
   if (lib.symbols.ioctl(listener, SECCOMP_IOCTL_NOTIF_ID_VALID, validId) !== 0) return;
+
+  // D-192. A cloud turn may hold UDP sockets (its name lookups), and an address allowed for TCP is not allowed
+  // for UDP: QUIC to port 443 is not F3's "TCP to port 443". So the target's socket is looked at first. A UDP
+  // socket may be connected to a name server on port 53 and to nothing else, and it is connected here, on the
+  // target's own socket, from this supervisor's copy of the address.
+  if (remote.resolvers.size > 0) {
+    const target = targetSocket(lib, pid, Number(targetFd));
+    if (target === undefined) {
+      sendNotificationError(lib, listener, id, EPERM);
+      return;
+    }
+    try {
+      if (target.type === SOCK_DGRAM) {
+        if (!resolverAddress(address, remote)) {
+          sendNotificationError(lib, listener, id, EPERM);
+          return;
+        }
+        const result = lib.symbols.connect(target.fd, address, address.byteLength);
+        sendNotificationValue(lib, listener, id, result === 0 ? 0n : -1n, result === 0 ? 0 : errnoNumber(lib));
+        return;
+      }
+      if (target.type !== SOCK_STREAM) {
+        sendNotificationError(lib, listener, id, EPERM);
+        return;
+      }
+    } finally {
+      lib.symbols.close(target.fd);
+    }
+  }
 
   const connected = lib.symbols.socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, IPPROTO_TCP);
   if (connected < 0) {
@@ -962,7 +1122,10 @@ function handleConnect(lib: Libc, listener: number, notification: Uint8Array, po
       sendNotificationError(lib, listener, id, error);
       return;
     }
-    if (lib.symbols.fcntl(connected, F_SETFL, O_NONBLOCK) !== 0) {
+    // The injected socket is a new open file description, so it carries none of the target's status flags.
+    // Copy the one that matters: a runtime's event loop (Bun, libuv) made its socket non-blocking, while the C
+    // library's resolver (`RES_OPTIONS=use-vc`, D-192) made a blocking one and fails on the first EAGAIN.
+    if (targetNonBlocking(pid, Number(targetFd)) && lib.symbols.fcntl(connected, F_SETFL, O_NONBLOCK) !== 0) {
       sendNotificationError(lib, listener, id, errnoNumber(lib));
       return;
     }
@@ -982,7 +1145,148 @@ function handleConnect(lib: Libc, listener: number, notification: Uint8Array, po
   }
 }
 
-function supervise(lib: Libc, listener: number, ports: ReadonlySet<number>, targetPid: number): void {
+/** True when this copied `sockaddr_in` is one of the turn's name servers on port 53. */
+function resolverAddress(address: Uint8Array, remote: RemoteSets): boolean {
+  const view = new DataView(address.buffer, address.byteOffset, address.byteLength);
+  return (
+    view.getUint16(0, true) === AF_INET &&
+    view.getUint16(2, false) === DNS_PORT &&
+    remote.resolvers.has(`${address[4]}.${address[5]}.${address[6]}.${address[7]}`)
+  );
+}
+
+/**
+ * A copy of the target's socket (`pidfd_getfd`, Linux 5.6) and its `SO_TYPE`, or `undefined` when it cannot be
+ * had — then the call is refused. The copy shares the target's open file description: what the supervisor does
+ * on it, it does to the target's socket. Needs the same ptrace access as reading the target's memory, which
+ * `PR_SET_PTRACER` gives for the vendor's own process.
+ */
+function targetSocket(lib: Libc, pid: number, fd: number): { readonly fd: number; readonly type: number } | undefined {
+  // A notification names the calling thread. `pidfd_open` wants a process, so a thread that is not its group's
+  // leader is opened by its group (measured: codex's resolver runs on a worker thread, and every lookup failed).
+  const pidfd = Number(syscall(lib, SYS_PIDFD_OPEN, threadGroup(pid), 0));
+  if (pidfd < 0) return undefined;
+  try {
+    const copy = Number(syscall(lib, SYS_PIDFD_GETFD, pidfd, fd, 0));
+    if (copy < 0) return undefined;
+    const type = new Int32Array(1);
+    const size = new Uint32Array([4]);
+    if (lib.symbols.getsockopt(copy, SOL_SOCKET, SO_TYPE, type, size) !== 0) {
+      lib.symbols.close(copy);
+      return undefined;
+    }
+    return { fd: copy, type: type[0]! };
+  } finally {
+    lib.symbols.close(pidfd);
+  }
+}
+
+/** The thread group (process) a thread id belongs to, from `/proc/<tid>/status`; the id itself when unreadable. */
+export function threadGroup(tid: number, read: (path: string) => string = readProc): number {
+  try {
+    const found = /^Tgid:\s*(\d+)/m.exec(read(`/proc/${tid}/status`));
+    return found === null ? tid : Number(found[1]);
+  } catch {
+    return tid;
+  }
+}
+
+/** Answer a notification with a return value (`error` 0) or an errno (`val` ignored). */
+function sendNotificationValue(lib: Libc, listener: number, id: bigint, value: bigint, error: number): void {
+  if (error !== 0) {
+    sendNotificationError(lib, listener, id, error);
+    return;
+  }
+  const response = new Uint8Array(24);
+  const view = new DataView(response.buffer);
+  view.setBigUint64(0, id, true);
+  view.setBigInt64(8, value, true);
+  view.setInt32(16, 0, true);
+  if (lib.symbols.ioctl(listener, SECCOMP_IOCTL_NOTIF_SEND, response) !== 0) {
+    const errno = errnoNumber(lib);
+    if (errno !== ENOENT) throw new Error(`ioctl(SECCOMP_IOCTL_NOTIF_SEND): ${lastError(lib)}`);
+  }
+}
+
+/** The largest datagram the supervisor will carry: a DNS query over UDP is far smaller (EDNS0 caps at 4096). */
+const MAX_DATAGRAM = 4096;
+
+/**
+ * D-192. A `sendto` that names a destination, from a cloud turn: a name lookup over UDP (musl's resolver, and
+ * codex's own, send that way and never fall back to TCP). Sent by the supervisor itself, from its own copies of
+ * the destination and the bytes, on a copy of the target's UDP socket — only to a name server on port 53, and
+ * never continued, so no second thread can change either after the check.
+ */
+function handleSendto(lib: Libc, listener: number, notification: Uint8Array, remote: RemoteSets): void {
+  const view = new DataView(notification.buffer, notification.byteOffset, notification.byteLength);
+  const id = view.getBigUint64(0, true);
+  const pid = view.getUint32(8, true);
+  const targetFd = view.getBigUint64(32, true);
+  const buffer = view.getBigUint64(40, true);
+  const length = view.getBigUint64(48, true);
+  const destination = view.getBigUint64(64, true);
+  const addressLength = view.getBigUint64(72, true);
+  const address = readSockaddr(lib, pid, destination, addressLength);
+  if (address === undefined || !resolverAddress(address, remote) || targetFd > 0x7fff_ffffn || length > BigInt(MAX_DATAGRAM)) {
+    sendNotificationError(lib, listener, id, EPERM);
+    return;
+  }
+  const bytes = new Uint8Array(Math.max(1, Number(length)));
+  if (length > 0n) {
+    const local = new Uint8Array(16);
+    const remoteIov = new Uint8Array(16);
+    const localView = new DataView(local.buffer);
+    const remoteView = new DataView(remoteIov.buffer);
+    localView.setBigUint64(0, addressOf(bytes), true);
+    localView.setBigUint64(8, length, true);
+    remoteView.setBigUint64(0, buffer, true);
+    remoteView.setBigUint64(8, length, true);
+    if (lib.symbols.process_vm_readv(pid, local, 1, remoteIov, 1, 0) !== length) {
+      sendNotificationError(lib, listener, id, EPERM);
+      return;
+    }
+  }
+  const validId = new BigUint64Array([id]);
+  if (lib.symbols.ioctl(listener, SECCOMP_IOCTL_NOTIF_ID_VALID, validId) !== 0) return;
+  const target = targetSocket(lib, pid, Number(targetFd));
+  if (target === undefined || target.type !== SOCK_DGRAM) {
+    if (target !== undefined) lib.symbols.close(target.fd);
+    sendNotificationError(lib, listener, id, EPERM);
+    return;
+  }
+  try {
+    const sent = lib.symbols.sendto(target.fd, bytes, length, MSG_DONTWAIT | MSG_NOSIGNAL, address, address.byteLength);
+    sendNotificationValue(lib, listener, id, sent, sent < 0n ? errnoNumber(lib) : 0);
+  } finally {
+    lib.symbols.close(target.fd);
+  }
+}
+
+/** One notification, by the syscall it is about: `connect` always, `sendto` only on a cloud turn. */
+function handleNotification(
+  lib: Libc,
+  listener: number,
+  notification: Uint8Array,
+  ports: ReadonlySet<number>,
+  remote: RemoteSets,
+  architecture: SeccompArchitecture | undefined = SECCOMP_ARCHITECTURES[process.arch],
+): void {
+  const nr = new DataView(notification.buffer, notification.byteOffset, notification.byteLength).getInt32(16, true);
+  if (architecture !== undefined && nr === architecture.sendto) {
+    if (remote.resolvers.size > 0) handleSendto(lib, listener, notification, remote);
+    else sendNotificationError(lib, listener, new DataView(notification.buffer, notification.byteOffset).getBigUint64(0, true), EPERM);
+    return;
+  }
+  handleConnect(lib, listener, notification, ports, remote);
+}
+
+function supervise(
+  lib: Libc,
+  listener: number,
+  ports: ReadonlySet<number>,
+  targetPid: number,
+  remote: RemoteSets = NO_REMOTE_SETS,
+): void {
   if (lib.symbols.fcntl(listener, F_SETFL, O_NONBLOCK) !== 0) {
     throw new Error(`fcntl(seccomp listener, O_NONBLOCK): ${lastError(lib)}`);
   }
@@ -1008,7 +1312,7 @@ function supervise(lib: Libc, listener: number, ports: ReadonlySet<number>, targ
       if (error === ENOENT) return;
       throw new Error(`ioctl(SECCOMP_IOCTL_NOTIF_RECV): ${lastError(lib)}`);
     }
-    handleConnect(lib, listener, notification, ports);
+    handleNotification(lib, listener, notification, ports, remote);
   }
 }
 
@@ -1019,6 +1323,8 @@ export function runFenceSupervisor(
 ): number {
   let control = -1;
   const ports = new Set<number>();
+  const remotePorts = new Set<number>();
+  const resolvers = new Set<string>();
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const raw = argv[index + 1];
@@ -1029,6 +1335,8 @@ export function runFenceSupervisor(
     const value = Number(raw);
     if (flag === "--control-fd" && Number.isInteger(value) && value >= 0) control = value;
     else if (flag === "--tcp-port" && Number.isInteger(value) && value >= 1 && value <= 65_535) ports.add(value);
+    else if (flag === "--remote-port" && Number.isInteger(value) && value >= 1 && value <= 65_535) remotePorts.add(value);
+    else if (flag === "--resolver" && ipv4Bytes(raw) !== undefined) resolvers.add(raw);
     else {
       console.error(`mind fence supervisor: invalid option ${JSON.stringify(flag)}=${JSON.stringify(raw)}`);
       return 126;
@@ -1064,7 +1372,7 @@ export function runFenceSupervisor(
     // caller wait for supervisor EOF after the vendor itself had exited.
     lib.symbols.close(1);
     lib.symbols.close(2);
-    supervise(lib, listener, ports, targetPid);
+    supervise(lib, listener, ports, targetPid, { ports: remotePorts, resolvers });
     return 0;
   } catch (cause) {
     console.error(
@@ -1093,6 +1401,11 @@ export const FENCE_TESTING = {
   readSockaddr,
   allowedAddress,
   handleConnect,
+  handleSendto,
+  handleNotification,
+  targetSocket,
+  resolverAddress,
+  sendNotificationValue,
   supervise,
   addressOf,
   nativeBytes: (address: bigint, length: number) =>
@@ -1127,6 +1440,8 @@ export interface ReadGrantInput {
   readonly cwd: string;
   readonly execPath: string;
   readonly main: string;
+  /** D-192: more paths the turn may read, each kept or dropped by the same rule as the working directory. */
+  readonly readable?: readonly string[];
 }
 
 export interface ReadGrantPlan {
@@ -1273,6 +1588,7 @@ export function readGrants(input: ReadGrantInput): ReadGrantPlan {
   }
 
   derived("the working directory", input.cwd);
+  for (const path of input.readable ?? []) derived("a path this turn was granted", path);
 
   const command0 = input.command[0];
   let program: string | undefined;
@@ -1377,6 +1693,7 @@ export function runFenceHelper(
         cwd: (runtime.cwd ?? ownWorkingDirectory)(),
         execPath: process.execPath,
         main: Bun.main,
+        ...(parsed.policy.readable === undefined ? {} : { readable: parsed.policy.readable }),
       })
     : undefined;
   for (const note of reads?.notes ?? []) console.error(`mind fence: ${note}`);
@@ -1438,7 +1755,7 @@ export function runFenceHelper(
         lib.symbols.close(fd);
       }
     }
-    for (const port of new Set(parsed.policy.tcpPorts)) {
+    for (const port of landlockPorts(parsed.policy)) {
       addRule(lib, ruleset, LANDLOCK_RULE_NET_PORT, portRule(port), `add TCP port ${port}`);
     }
 
@@ -1454,7 +1771,10 @@ export function runFenceHelper(
     // Landlock has now removed every port except the policy's, and seccomp
     // closes what Landlock cannot express: address, UDP, IPv6 and AF_UNIX.
     // The injected runtime seam keeps the irreversible sequence unit-testable.
-    runtime.secureNetwork(lib, parsed.policy.tcpPorts);
+    runtime.secureNetwork(lib, parsed.policy.tcpPorts, {
+      ports: parsed.policy.remotePorts ?? [],
+      resolvers: parsed.policy.resolvers ?? [],
+    });
 
     // Do not hand the vendor an already-open socket it could write through.
     // After this point every socket is one the filter saw being created, so a

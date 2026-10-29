@@ -29,6 +29,7 @@
  * turn's id, which is the link between the two. Nothing here reads the ledger back (D-022).
  */
 
+import type { Handoff } from "./gate.ts";
 import { chmod, mkdir, open, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { procStat } from "../decide/runs.ts";
@@ -46,12 +47,12 @@ export const LOG_FILE = "runner.log";
 export type TaskEnv = PersonalEnv;
 
 /**
- * Where a task is. `planning`, `running`, `waiting` (paused on an owner's answer, D-156) and `waiting-backend`
+ * Where a task is. `queued` (S18.3) is durable intake: no runner has claimed it yet. `planning`, `running`, `waiting` (paused on an owner's answer, D-156) and `waiting-backend`
  * (the backend its steps need is not ready — the local model asleep or down, S18.2) are a runner's to set while it
  * lives. `parked` (S18.2, D-164) is set by a runner as it leaves: the task is set aside, not ended, with no runner
  * behind it — `task resume` carries it on, `task stop` ends it. The other four are final and never left.
  */
-export type TaskStatus = "planning" | "running" | "waiting" | "waiting-backend" | "parked" | "done" | "failed" | "stopped" | "budget";
+export type TaskStatus = "queued" | "planning" | "running" | "waiting" | "waiting-backend" | "parked" | "done" | "failed" | "stopped" | "budget";
 
 /** What a reader is told: the record's status, or `interrupted` when no runner is behind a status that needs one. */
 export type ShownStatus = TaskStatus | "interrupted";
@@ -85,6 +86,8 @@ export interface TaskStep {
   /** The turn's own id: the same id its ledger line carries. `null` when the turn never said one. */
   readonly turnId: string | null;
   readonly backend: string | null;
+  /** S22.14: the model that backend's own output named for this step; absent on a step recorded before, `null` when it named none. */
+  readonly model?: string | null;
   readonly exit: number | null;
   /**
    * `no-backend` (S18.2): the turn got no answer and the backend was found not ready right after — the local model
@@ -159,6 +162,16 @@ export interface TaskRecord {
   readonly generation: number;
   /** S18.2: how long it waits for its backend before it is parked. Absent: `DEFAULT_BACKEND_WAIT_MINUTES` (30). */
   readonly backendWaitMinutes?: number;
+  /** S22.14: what sort of work this is — a slug the owner chose (`bugfix`, `docs`) — which the measurement table groups by. */
+  readonly kind?: string;
+  /** S22.10: a parked task may be carried on from this time (ISO) by `mind task tick`; absent means a person decides. */
+  readonly resumeAfter?: string;
+  /** S22.8 AC3: the worktree this task was given (`mind task new --worktree`); its `cwd` is `worktree.path`. */
+  readonly worktree?: { readonly repo: string; readonly path: string; readonly branch: string; readonly base: string };
+  /** S22.12 AC2: the command, as an argv, that decides "done" (`--gate`); it is run in {@link worktree} and goes with it. */
+  readonly gate?: readonly string[];
+  /** S22.12 AC2: written when the gate was green: what a person reads and types to merge. Mind never merges. */
+  readonly handoff?: Handoff;
 }
 
 const TASK_ID = /^t-[0-9a-f]{8}$/;
@@ -337,7 +350,7 @@ export function shownStatus(
   stat: (pid: number) => { readonly startTicks: number } | null = procStat,
   now: number = Date.now(),
 ): ShownStatus {
-  if (isFinal(record.status) || record.status === "parked") return record.status;
+  if (isFinal(record.status) || record.status === "parked" || record.status === "queued") return record.status;
   if (alive(record.runner, stat)) return record.status;
   // A task just made with --detach, whose runner has not claimed it yet, is starting — not interrupted.
   const young = now - Date.parse(record.createdAt) < STARTING_MS;

@@ -51,6 +51,49 @@ async function setup(record: TaskRecord, script: (prompt: string, n: number) => 
 const plan = said({ plan: ["open", "answer"] });
 
 describe("the task runner (D-154)", () => {
+  test("a task that ends is measured once, with its final record; one that is only parked is not; a failing measure never fails the task (S22.14)", async () => {
+    const ended: string[] = [];
+    let steps = 0;
+    const { deps, reread } = await setup(aTask(), (prompt) => {
+      if (prompt.includes("only make the plan")) return answer(plan);
+      steps += 1;
+      return answer(said({ done: true, summary: "all", result: "42" }));
+    }, { measure: async (record) => void ended.push(`${record.id}:${record.status}`) });
+    await runTask(aTask(), deps);
+    expect(ended).toEqual(["t-0000abcd:done"]);
+    expect((await reread()).status).toBe("done");
+    expect(steps).toBe(1);
+
+    const failing = await setup(aTask(), (prompt) => answer(prompt.includes("only make the plan") ? plan : said({ done: true, summary: "all", result: "42" })), {
+      measure: async () => {
+        throw new Error("disk full");
+      },
+    });
+    const out = await runTask(aTask(), failing.deps);
+    expect(out.ok).toBe(true);
+    expect((await failing.reread()).status).toBe("done");
+  });
+
+  test("a task whose backend changes between steps hands the next one the handoff (S22.6)", async () => {
+    let steps = 0;
+    const { deps, prompts, reread } = await setup(aTask(), (prompt) => {
+      if (prompt.includes("only make the plan")) return answer(plan, { backend: "claude" });
+      steps += 1;
+      // claude plans and does step 1; codex takes over for 2 and 3, as if claude's quota ran out between turns.
+      const backend = steps < 2 ? "claude" : "codex";
+      return answer(said(steps < 3 ? { done: false, summary: `did ${steps}` } : { done: true, summary: "all", result: "42" }), { backend });
+    });
+    const out = await runTask(aTask(), deps);
+    expect(out.ok).toBe(true);
+    expect((await reread()).steps.map((s) => s.backend)).toEqual(["claude", "claude", "codex", "codex"]);
+    // Step 1 is asked before any switch: nothing to hand over yet, and one backend has answered.
+    expect(prompts[1]).not.toContain("Handoff");
+    // Step 2 is asked after claude alone answered: still one backend.
+    expect(prompts[2]).not.toContain("Handoff");
+    // Step 3 is asked after claude and codex both did: the handoff names both.
+    expect(prompts[3]).toContain("answered by more than one backend — claude (plan, step 1); codex (step 2)");
+  });
+
   test("plan, steps, done: every step is a turn, recorded with its id, and the result kept", async () => {
     let steps = 0;
     const { deps, prompts, reread } = await setup(aTask(), (prompt) => {

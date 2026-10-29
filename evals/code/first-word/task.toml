@@ -1,0 +1,5 @@
+schema = "mind/code-eval@1"
+ask = "firstWord() in src/words.js throws on an empty or whitespace-only string. It should return an empty string then. Fix it in the source."
+gate = ["bun", "test/check.js"]
+protect = ["test/**"]
+gate_timeout_s = 60

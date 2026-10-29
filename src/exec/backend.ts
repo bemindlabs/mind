@@ -123,6 +123,12 @@ export interface TurnRequest {
    * will decide when a turn gets hands on a browser.
    */
   readonly browser?: BrowserHands;
+  /**
+   * S22.8 (D-197), `scope = machine`: the directories a fenced cloud turn that may write is granted, in place of its
+   * working directory — every directory on this machine but the red lines (`src/exec/machine-scope.ts`). Absent is
+   * the usual scope: the vendor's home and the working directory.
+   */
+  readonly machine?: { readonly grants: readonly string[]; readonly home: string; readonly redLines: readonly string[] };
 }
 
 /**
@@ -163,6 +169,13 @@ export interface TurnResult {
    * the plain sentence saying what was capped and why. Absent on every other turn.
    */
   readonly capped?: string;
+  /**
+   * Set when a cloud turn with a tool ran without the kernel fence (D-192, F4): no Landlock on this kernel, or a
+   * vendor Mind has not measured. The plain sentence saying so. Absent on every fenced, local or tool-free turn.
+   */
+  readonly unfenced?: string;
+  /** Set when a fenced cloud turn's refreshed vendor login was not written back to the owner's file (D-192). */
+  readonly login?: string;
 }
 
 /** Whether a backend can be used right now, and why not when it cannot. */
@@ -196,6 +209,12 @@ export interface ExecBackend {
    * `run` applies the fence. See `src/exec/cap.ts`.
    */
   appliesFence?(request: TurnRequest): boolean;
+
+  /**
+   * The notice a turn on this backend carries because it runs unfenced although it has tools (D-192, F4), or
+   * `undefined`. Optional: a backend that does not implement it has nothing to say (ollama has no tools).
+   */
+  fenceNotice?(request: TurnRequest): string | undefined;
 
   /** Cheap readiness check. Must not run a turn or spend quota. */
   available(): Promise<Availability>;

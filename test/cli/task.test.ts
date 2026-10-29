@@ -4,6 +4,7 @@
  * and a real browser do is `test/e2e/tasks.e2e.ts`.
  */
 
+import { fenceSupport } from "../../src/exec/fence.ts";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -150,6 +151,23 @@ describe("mind task", () => {
     model.never = false;
     expect(ran.code).toBe(3);
     expect(ran.stderr).toContain("budget — its budget of 3 turn(s) is spent");
+  }, 60_000);
+
+  test("--queue stores durable intake without starting a runner", async () => {
+    const h = await home();
+    const queued = await run(h.env, ["task", "new", SOUL, "--subject", "example", "--goal", "wait for the tick", "--backend", "ollama", "--queue", "--json"]);
+    expect(queued.code, queued.stderr).toBe(0);
+    const out = JSON.parse(queued.stdout) as { ok: boolean; id: string; queued: boolean };
+    expect(out).toMatchObject({ ok: true, queued: true });
+    const record = await readRecord(h.tasks, out.id);
+    expect(record.status).toBe("queued");
+    expect(record.runner).toBeNull();
+    expect(model.prompts).not.toContainEqual(expect.stringContaining("wait for the tick"));
+    const listed = JSON.parse((await run(h.env, ["task", "list", SOUL, "--subject", "example", "--json"])).stdout) as { tasks: { id: string; status: string; stoppable: boolean }[] };
+    expect(listed.tasks).toContainEqual(expect.objectContaining({ id: out.id, status: "queued", stoppable: true }));
+    const shown = await run(h.env, ["task", "show", out.id, SOUL, "--subject", "example"]);
+    expect(shown.stdout).toContain("it is queued");
+    expect((await run(h.env, ["task", "new", SOUL, "--subject", "example", "--goal", "no", "--queue", "--detach"])).code).toBe(2);
   }, 60_000);
 
   test("refusals: no goal, a bad number, a browser without sites or on a backend that cannot have one, the brake", async () => {
@@ -314,7 +332,10 @@ describe("mind turn --task", () => {
     expect(json.task).toBe("t-0000abcd");
     expect(json.turn).toMatch(/^[0-9a-f-]{36}$/);
     expect(ran.stderr).toContain("this step has its browser (operate 2");
-    const argv = (await readFile(join(h.dir, "argv-claude.jsonl"), "utf8")).trim().split("\n").map((l) => JSON.parse(l) as string[]).at(-1)!;
+    // A browser gives claude tools at any level, so where the kernel can, the step runs in the fence (D-192) and
+    // its HOME — where the stub logs — is Mind's home for claude and this subject.
+    const stubHome = fenceSupport().ok ? join(h.dir, "state", "mind", "vendors", "claude", "subjects", "example") : h.dir;
+    const argv = (await readFile(join(stubHome, "argv-claude.jsonl"), "utf8")).trim().split("\n").map((l) => JSON.parse(l) as string[]).at(-1)!;
     const config = argv[argv.indexOf("--mcp-config") + 1]!;
     expect(argv).toContain("--strict-mcp-config");
     // Review of PR #24, finding 1: the dial says write and run 2, and the step still has no shell, no file
@@ -460,4 +481,204 @@ describe("mind task approve | deny (D-156)", () => {
     expect(Date.parse(notes[0]!.endedAt)).toBeGreaterThanOrEqual(Date.parse(notes[0]!.startedAt));
     await rm(elsewhere, { recursive: true, force: true });
   }, 60_000);
+});
+
+describe("the measure line a finished task leaves (S22.14)", () => {
+  test("one line per task, metadata only, with its kind, status, finisher and counts — and none for a task still running", async () => {
+    model.doneAfter = 2;
+    model.never = false;
+    const h = await home();
+    const ran = await run(h.env, ["task", "new", SOUL, "--subject", "example", "--goal", "find the secret-goal-word", "--kind", "docs", "--backend", "ollama", "--json"]);
+    expect(ran.code, ran.stderr).toBe(0);
+    const summary = JSON.parse(ran.stdout) as { id: string; status: string };
+    expect(summary.status).toBe("done");
+    const file = join(h.tasks, "..", "measure", "measures.jsonl");
+    const lines = (await readFile(file, "utf8")).trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ v: 1, task: summary.id, subject: "example", kind: "docs", status: "done", backend: "ollama" });
+    expect(Number(lines[0]!["turns"])).toBe(3);
+    // Nothing a person wrote and nothing a model said is in it.
+    const text = JSON.stringify(lines[0]);
+    for (const word of ["secret-goal-word", "the answer is 42", "step said"]) expect(text).not.toContain(word);
+  }, 60_000);
+});
+
+describe("mind task new --worktree (S22.8 AC3)", () => {
+  async function repo(parent: string): Promise<string> {
+    const dir = join(parent, "projects", "repo");
+    await mkdir(dir, { recursive: true });
+    const git = async (...args: string[]) => {
+      const child = Bun.spawn(["git", ...args], { cwd: dir, stdout: "pipe", stderr: "pipe", env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@example.invalid", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@example.invalid" } });
+      const stderr = await new Response(child.stderr).text();
+      expect(await child.exited, stderr).toBe(0);
+    };
+    await git("init", "-q", "-b", "main");
+    await writeFile(join(dir, "a.txt"), "one");
+    await git("add", "a.txt");
+    await git("commit", "-q", "-m", "one");
+    return dir;
+  }
+
+  test("the task is given a worktree of its own on its own branch, and its working directory is that worktree", async () => {
+    const h = await home();
+    const dir = await repo(join(h.dir, "ws"));
+    const ran = await run(h.env, ["task", "new", SOUL, "--subject", "example", "--goal", "edit a file", "--worktree", dir, "--queue", "--json"]);
+    expect(ran.code, ran.stderr).toBe(0);
+    const id = (JSON.parse(ran.stdout) as { id: string }).id;
+    const record = await readRecord(h.tasks, id);
+    const expected = join(h.dir, "ws", "worktrees", `repo-${id}`);
+    expect(record.cwd).toBe(expected);
+    expect(record.worktree).toEqual({ repo: dir, path: expected, branch: `feat/${id}`, base: "main" });
+    expect(await readFile(join(expected, "a.txt"), "utf8")).toBe("one");
+    expect(ran.stderr).toContain("works in its own worktree");
+    // The main checkout was not touched and is still on main.
+    const head = Bun.spawn(["git", "rev-parse", "--abbrev-ref", "HEAD"], { cwd: dir, stdout: "pipe" });
+    expect((await new Response(head.stdout).text()).trim()).toBe("main");
+  });
+
+  test("two tasks on one repository get two worktrees", async () => {
+    const h = await home();
+    const dir = await repo(join(h.dir, "ws"));
+    const a = await run(h.env, ["task", "new", SOUL, "--subject", "example", "--goal", "one", "--worktree", dir, "--queue", "--json"]);
+    const b = await run(h.env, ["task", "new", SOUL, "--subject", "example", "--goal", "two", "--worktree", dir, "--queue", "--json"]);
+    const [ra, rb] = await Promise.all([a, b].map(async (r) => readRecord(h.tasks, (JSON.parse(r.stdout) as { id: string }).id)));
+    expect(ra!.cwd).not.toBe(rb!.cwd);
+  });
+
+  test("refuses, storing no task: not a repository, no default place, a base that is not a commit, flags without --worktree", async () => {
+    const h = await home();
+    const dir = await repo(join(h.dir, "ws"));
+    const notRepo = await run(h.env, ["task", "new", SOUL, "--subject", "example", "--goal", "x", "--worktree", h.dir, "--worktree-root", join(h.dir, "wt"), "--queue"]);
+    expect(notRepo.code).toBe(1);
+    expect(notRepo.stderr).toContain("is not inside a git repository");
+    const elsewhere = join(h.dir, "code", "repo");
+    await mkdir(elsewhere, { recursive: true });
+    const noDefault = await run(h.env, ["task", "new", SOUL, "--subject", "example", "--goal", "x", "--worktree", elsewhere, "--queue"]);
+    expect(noDefault.code).toBe(2);
+    expect(noDefault.stderr).toContain("--worktree needs --worktree-root");
+    const badBase = await run(h.env, ["task", "new", SOUL, "--subject", "example", "--goal", "x", "--worktree", dir, "--base", "nope", "--queue"]);
+    expect(badBase.code).toBe(1);
+    expect(badBase.stderr).toContain("is not a commit");
+    const stray = await run(h.env, ["task", "new", SOUL, "--subject", "example", "--goal", "x", "--base", "main", "--queue"]);
+    expect(stray.code).toBe(2);
+    expect(stray.stderr).toContain("go with --worktree");
+    const listed = await run(h.env, ["task", "list", SOUL, "--subject", "example", "--json"]);
+    expect((JSON.parse(listed.stdout) as { tasks: unknown[] }).tasks).toEqual([]);
+  });
+});
+
+describe("mind task new --worktree --gate (S22.12 AC2)", () => {
+  async function repoWith(parent: string, files: Record<string, string>): Promise<string> {
+    const dir = join(parent, "projects", "repo");
+    await mkdir(dir, { recursive: true });
+    const git = async (...args: string[]) => {
+      const child = Bun.spawn(["git", ...args], { cwd: dir, stdout: "pipe", stderr: "pipe", env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@example.invalid", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@example.invalid" } });
+      const stderr = await new Response(child.stderr).text();
+      expect(await child.exited, stderr).toBe(0);
+    };
+    await git("init", "-q", "-b", "main");
+    for (const [name, text] of Object.entries(files)) await writeFile(join(dir, name), text);
+    await git("add", ".");
+    await git("commit", "-q", "-m", "one");
+    return dir;
+  }
+
+  test("a gate that is red stops the bot's own 'done': it is told, tries again, and the task fails after three, with no handoff", async () => {
+    model.doneAfter = 1;
+    model.prompts.length = 0;
+    const h = await home();
+    const dir = await repoWith(join(h.dir, "ws"), { "red.js": "process.exit(1);\n" });
+    const made = await run(h.env, ["task", "new", SOUL, "--subject", "example", "--goal", "fix it", "--backend", "ollama", "--worktree", dir, "--gate", "bun red.js", "--json"]);
+    const id = (JSON.parse(made.stdout) as { id: string }).id;
+    const record = await readRecord(h.tasks, id);
+    expect(record.gate).toEqual(["bun", "red.js"]);
+    expect(record.status).toBe("failed");
+    expect(record.reason).toContain("still red after 3 tries");
+    expect(record.handoff).toBeUndefined();
+    expect(model.prompts.some((p) => p.includes("is red (attempt 1 of 3)"))).toBe(true);
+  }, 120_000);
+
+  test("a green gate ends done with a handoff from real git: nothing is merged, and the command is for a person", async () => {
+    model.doneAfter = 1;
+    const h = await home();
+    const dir = await repoWith(join(h.dir, "ws"), { "green.js": "process.exit(0);\n" });
+    const made = await run(h.env, ["task", "new", SOUL, "--subject", "example", "--goal", "fix it", "--backend", "ollama", "--worktree", dir, "--gate", "bun green.js", "--json"]);
+    const id = (JSON.parse(made.stdout) as { id: string }).id;
+    const record = await readRecord(h.tasks, id);
+    expect(record.status).toBe("done");
+    expect(record.handoff).toMatchObject({ repo: dir, base: "main", gate: "bun green.js", mergeCommand: `git -C ${dir} merge --ff-only feat/${id}` });
+    const shown = await run(h.env, ["task", "show", id, SOUL, "--subject", "example"]);
+    expect(shown.stdout).toContain("nothing was merged");
+    // The repository's own branch is exactly where it was: Mind has no merge verb.
+    const head = Bun.spawn(["git", "log", "--oneline", "-1", "main"], { cwd: dir, stdout: "pipe" });
+    expect((await new Response(head.stdout).text()).trim()).toContain("one");
+  }, 120_000);
+
+  test("a shell line is a usage error and stores nothing; --gate without --worktree is refused", async () => {
+    const h = await home();
+    const dir = await repoWith(join(h.dir, "ws"), { "a.txt": "one" });
+    const shell = await run(h.env, ["task", "new", SOUL, "--subject", "example", "--goal", "x", "--worktree", dir, "--gate", "bun test && echo hi", "--queue"]);
+    expect(shell.code).toBe(2);
+    expect(shell.stderr).toContain("not through a shell");
+    const bare = await run(h.env, ["task", "new", SOUL, "--subject", "example", "--goal", "x", "--gate", "bun test", "--queue"]);
+    expect(bare.code).toBe(2);
+    expect(bare.stderr).toContain("go with --worktree");
+    const listed = await run(h.env, ["task", "list", SOUL, "--subject", "example", "--json"]);
+    expect((JSON.parse(listed.stdout) as { tasks: unknown[] }).tasks).toEqual([]);
+  });
+});
+
+describe("mind task tick (S22.10)", () => {
+  async function store(tasks: string, id: string, overrides: Partial<TaskRecord>): Promise<void> {
+    const { createTask } = await import("../../src/task/store.ts");
+    const { aTask } = await import("../task/fixture.ts");
+    await createTask(tasks, aTask({ id, subject: SUBJECT, dir: SOUL, cwd: SOUL, backend: "ollama", generation: 1, ...overrides }));
+  }
+  const past = () => new Date(Date.now() - 60_000).toISOString();
+  const future = () => new Date(Date.now() + 3_600_000).toISOString();
+
+  test("--dry-run says what it would carry on and what it would leave, and changes nothing", async () => {
+    const h = await home();
+    await store(h.tasks, "t-00000a01", { status: "parked", resumeAfter: past() });
+    await store(h.tasks, "t-00000a02", { status: "parked", resumeAfter: future() });
+    await store(h.tasks, "t-00000a03", { status: "parked" });
+    const result = await run(h.env, ["task", "tick", SOUL, "--subject", "example", "--dry-run", "--json"]);
+    expect(result.code, result.stderr).toBe(0);
+    const out = JSON.parse(result.stdout) as { dryRun: boolean; tasks: { id: string; action: string }[] };
+    expect(out.dryRun).toBe(true);
+    expect(Object.fromEntries(out.tasks.map((t) => [t.id, t.action]))).toEqual({ "t-00000a01": "would resume", "t-00000a02": "skip", "t-00000a03": "skip" });
+    expect((await readRecord(h.tasks, "t-00000a01")).status).toBe("parked");
+  });
+
+  test("a parked task whose time has come is carried on to the end, and its parked-until time is forgotten", async () => {
+    model.doneAfter = 2;
+    model.never = false;
+    const h = await home();
+    await store(h.tasks, "t-00000b01", { status: "parked", resumeAfter: past(), plan: ["look", "answer"], reason: "its backends were resting" });
+    const ticked = await run(h.env, ["task", "tick", SOUL, "--subject", "example"]);
+    expect(ticked.code, ticked.stderr).toBe(0);
+    expect(ticked.stdout).toContain("t-00000b01  resumed");
+    const finished = await until(async () => {
+      const record = await readRecord(h.tasks, "t-00000b01");
+      return record.status === "done" ? record : undefined;
+    });
+    expect(finished.resumeAfter).toBeUndefined();
+    expect(finished.result).toBe("the answer is 42");
+  }, 60_000);
+
+  test("while the brake is on it does nothing at all, and says so", async () => {
+    const h = await home();
+    await store(h.tasks, "t-00000c01", { status: "parked", resumeAfter: past() });
+    expect((await run(h.env, ["stop"])).code).toBe(0);
+    const ticked = await run(h.env, ["task", "tick", SOUL, "--subject", "example"]);
+    expect(ticked.code).toBe(4);
+    expect(ticked.stderr).toContain("the brake is on");
+    expect((await readRecord(h.tasks, "t-00000c01")).status).toBe("parked");
+  });
+
+  test("nothing to carry on is said, and a bad --max is a usage error", async () => {
+    const h = await home();
+    expect((await run(h.env, ["task", "tick", SOUL, "--subject", "example"])).stdout).toContain("nothing to carry on");
+    expect((await run(h.env, ["task", "tick", SOUL, "--subject", "example", "--max", "0"])).code).toBe(2);
+  });
 });

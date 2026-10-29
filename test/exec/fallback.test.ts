@@ -14,6 +14,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Availability, ExecBackend, TurnRequest, TurnResult } from "../../src/exec/backend.ts";
 import { fallbackTrail, FallbackExec } from "../../src/exec/fallback.ts";
+import { memoryHealth } from "../../src/exec/health.ts";
 import { subjectId, type Confidence, type Usage } from "../../src/types.ts";
 import { RESTRAINED } from "../support/restraint.ts";
 
@@ -26,20 +27,25 @@ interface FakeOptions {
   readonly text?: string;
   readonly identityStrength?: ExecBackend["identityStrength"];
   readonly usage?: Usage;
+  /** What `evidence.raw` says, so a test can make a miss say the quota is gone. */
+  readonly raw?: string;
 }
 
 /** A backend that does exactly what the test says and records what it saw. */
-function fake(options: FakeOptions): ExecBackend & { readonly seen: TurnRequest[] } {
+function fake(options: FakeOptions): ExecBackend & { readonly seen: TurnRequest[]; readonly asked: { n: number } } {
   const seen: TurnRequest[] = [];
+  const asked = { n: 0 };
   const ready = options.ready ?? true;
   const confidence = options.confidence ?? "confirmed";
   return {
     seen,
+    asked,
     id: options.id,
     display: `Fake ${options.id}`,
     kind: "cli",
     identityStrength: options.identityStrength ?? "system",
     available(): Promise<Availability> {
+      asked.n += 1;
       return Promise.resolve({ ok: ready, detail: options.detail ?? `${options.id}: fake` });
     },
     run(request: TurnRequest): Promise<TurnResult> {
@@ -52,7 +58,7 @@ function fake(options: FakeOptions): ExecBackend & { readonly seen: TurnRequest[
         evidence: {
           source: options.id,
           prompt: request.prompt,
-          raw: `raw from ${options.id}`,
+          raw: options.raw ?? `raw from ${options.id}`,
           ...(options.usage === undefined ? {} : { usage: options.usage }),
         },
       });
@@ -282,5 +288,82 @@ describe("fallbackTrail", () => {
     expect(fallbackTrail("[fallback] all 1 backend(s) missed · ollama: failed")).toBe(
       "all 1 backend(s) missed · ollama: failed",
     );
+  });
+});
+
+describe("FallbackExec with a health book (S22.2, D-197)", () => {
+  const NOW = Date.parse("2026-10-27T10:00:00Z");
+  const clock = (): number => NOW;
+  const LIMIT_RAW = "You've hit your session limit";
+  const resetAt = Math.floor((NOW + 2 * 3600_000) / 1000);
+
+  test("a miss that says the quota is gone rests the backend; the next turn does not ask it at all", async () => {
+    const health = memoryHealth();
+    const spent = fake({ id: "claude", confidence: "failed", text: "", raw: `${LIMIT_RAW} {"resetsAt": ${resetAt}}` });
+    const next = fake({ id: "codex" });
+    const chain = new FallbackExec([spent, next], undefined, health, clock);
+
+    const first = await chain.run(REQUEST);
+    expect(first.backend).toBe("codex");
+    expect(fallbackTrail(first.evidence.raw)).toBe("claude: failed (exhausted)");
+    expect(spent.seen.length).toBe(1);
+
+    const second = await chain.run(REQUEST);
+    expect(second.backend).toBe("codex");
+    // Not asked, not even whether it is ready: a readiness probe is a process spawn.
+    expect(spent.seen.length).toBe(1);
+    expect(spent.asked.n).toBe(1);
+    expect(fallbackTrail(second.evidence.raw)).toContain("claude: resting until 2026-10-27T12:00:00.000Z (session limit reached)");
+  });
+
+  test("when every backend is resting nothing is sent, and the answer says when one can be tried again", async () => {
+    const health = memoryHealth();
+    const a = fake({ id: "claude", confidence: "failed", text: "", raw: `${LIMIT_RAW} {"resetsAt": ${resetAt}}` });
+    const b = fake({ id: "codex", confidence: "failed", text: "", raw: "You've hit your usage limit" });
+    const chain = new FallbackExec([a, b], undefined, health, clock);
+
+    await chain.run(REQUEST);
+    const result = await chain.run(REQUEST);
+
+    expect(a.seen.length).toBe(1);
+    expect(b.seen.length).toBe(1);
+    expect(result.text).toBe("");
+    expect(result.confidence).toBe("silent");
+    // codex gave no time, so it rests on the first step of the ladder (15 minutes): that is the earliest.
+    expect(fallbackTrail(result.evidence.raw)).toContain("earliest retry 2026-10-27T10:15:00.000Z");
+  });
+
+  test("a busy moment is a miss, not a rest", async () => {
+    const health = memoryHealth();
+    const busy = fake({ id: "claude", confidence: "failed", text: "", raw: "429 overloaded, try again" });
+    const next = fake({ id: "codex" });
+    const chain = new FallbackExec([busy, next], undefined, health, clock);
+
+    await chain.run(REQUEST);
+    await chain.run(REQUEST);
+
+    expect(busy.seen.length).toBe(2);
+  });
+
+  test("an answer that happens to say \"quota\" is never read", async () => {
+    const health = memoryHealth();
+    const talkative = fake({ id: "claude", text: "the quota reached its limit, as you asked me to write", confidence: "confirmed" });
+    const chain = new FallbackExec([talkative], undefined, health, clock);
+
+    await chain.run(REQUEST);
+    await chain.run(REQUEST);
+
+    expect(talkative.seen.length).toBe(2);
+  });
+
+  test("without a health book the chain asks every backend every turn, as before", async () => {
+    const spent = fake({ id: "claude", confidence: "failed", text: "", raw: LIMIT_RAW });
+    const next = fake({ id: "codex" });
+    const chain = new FallbackExec([spent, next]);
+
+    await chain.run(REQUEST);
+    await chain.run(REQUEST);
+
+    expect(spent.seen.length).toBe(2);
   });
 });

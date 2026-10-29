@@ -160,7 +160,10 @@ describe("a step's turn, as a child", () => {
 
   test("what `turn --json` printed is read for the step; tokens are a sum or nothing", () => {
     expect(readTurnJson("not json")).toEqual({ text: "", turnId: null, backend: null, tokens: null });
-    expect(readTurnJson(JSON.stringify({ text: "hi", turn: "u", backend: "b", evidence: { usage: { input: 3, output: 4 } } }))).toEqual({ text: "hi", turnId: "u", backend: "b", tokens: 7 });
+    expect(readTurnJson(JSON.stringify({ text: "hi", turn: "u", backend: "b", evidence: { usage: { input: 3, output: 4 } } }))).toEqual({ text: "hi", turnId: "u", backend: "b", model: null, tokens: 7 });
+    // S22.14: the model the backend's own output named, kept on the step; an empty or missing one is null.
+    expect(readTurnJson(JSON.stringify({ text: "hi", model: "claude-opus-5-5" })).model).toBe("claude-opus-5-5");
+    expect(readTurnJson(JSON.stringify({ text: "hi", model: "" })).model).toBeNull();
     expect(readTurnJson(JSON.stringify({ text: "hi", evidence: { usage: { input: null, output: 4 } } })).tokens).toBe(4);
     expect(readTurnJson(JSON.stringify({ evidence: {} })).tokens).toBeNull();
     expect(readTurnJson(JSON.stringify({ text: "", route: "no backend answered · 3s", evidence: { raw: "timed out after 60000ms" } })).why).toBe("no backend answered · 3s — timed out after 60000ms");

@@ -33,6 +33,7 @@ import { keyPrint, newKey } from "./key.ts";
 import { ASK_ANSWER_MAX_CHARS, ASK_TIMEOUT_MS, askProblem, capAnswer } from "../memory/ask.ts";
 import { timingSafeEqual } from "node:crypto";
 import { answerCode, type Answer } from "../task/answer.ts";
+import type { ActionResult, FleetView } from "../fleet/status.ts";
 
 export { TOKEN_HEADER };
 
@@ -56,7 +57,7 @@ export interface WebDeps {
     write: boolean,
   ) => Promise<{ readonly code: number; readonly stdout: string; readonly stderr: string }>;
   /** One ledger line, asked and answered, or undefined. */
-  readonly turnDetail: (id: string) => Promise<{ readonly asked: string | null; readonly answer: string | null; readonly backend: string; readonly model: string | null; readonly modelRequested: string | null; readonly when: string; readonly content: string } | undefined>;
+  readonly turnDetail: (id: string) => Promise<TurnDetail | undefined>;
   /** The soul on every axis, or why it does not load. */
   readonly profile: () => Promise<{ readonly ok: true; readonly profile: Profile } | { readonly ok: false; readonly reason: string }>;
   /** `soul edit` with this profile — a dry run unless `write`. */
@@ -89,6 +90,16 @@ export interface WebDeps {
   /** D-156: the owner's answer to a held action (`answerHeld`), from this page. Absent: the route answers 404. */
   readonly taskAnswer?: (task: string, approval: string, verdict: "approve" | "deny", stop: boolean) => Promise<Answer>;
   readonly taskScreen?: (task: string) => Promise<{ readonly ok: true; readonly image: string; readonly at: string } | { readonly ok: false; readonly reason: string }>;
+  /**
+   * S22.9 (D-197): the fleet page — absent unless the page was started with `--fleet <fleet.toml>`; the routes then say
+   * `enabled: false`. Metadata only, and three narrow actions; nothing here starts a turn.
+   */
+  readonly fleet?: {
+    readonly view: () => Promise<FleetView>;
+    readonly rest: (backend: string, minutes: unknown) => Promise<ActionResult>;
+    readonly wake: (backend: string) => Promise<ActionResult>;
+    readonly stop: (bot: string) => Promise<ActionResult & { readonly tasks?: readonly string[] }>;
+  };
   /** The agent directory and subject every action is about. */
   readonly dir: string;
   readonly subject: string;
@@ -193,6 +204,36 @@ export function tailnetNames(statusJson: string): readonly string[] {
     return [];
   }
 }
+
+/**
+ * One turn, read back for "Details" (D-079, D-194). `asked` .. `content` are the original shape; every field after
+ * them is additive and present only when known — a count a backend did not print is absent, never 0 (the
+ * ledger's UNREPORTED_USAGE convention), and a price is the ledger's own or nothing, never an estimate (D-022,
+ * D-110). All of it is read through `mind ledger show --json`, except `recall`, which this process remembers
+ * from the turns it ran (the ledger does not record recall).
+ */
+export interface TurnDetail {
+  readonly asked: string | null;
+  readonly answer: string | null;
+  readonly backend: string;
+  readonly model: string | null;
+  readonly modelRequested: string | null;
+  readonly when: string;
+  readonly content: string;
+  /** The sentence `mind turn` prints about who answered; the fallback trail is not kept by the ledger, so it is not in it. */
+  readonly route?: string;
+  /** Tokens as the ledger recorded them; a count the backend did not print is left out. Absent when it printed none. */
+  readonly usage?: { readonly input?: number; readonly output?: number; readonly cached?: number; readonly total?: number };
+  readonly durationMs?: number;
+  /** The ledger's own price for the turn in US micro-dollars (1 = $0.000001); absent when the ledger recorded none. */
+  readonly costUsdMicros?: number;
+  /** Memory files recall attached: paths and titles, never their text. Absent when this process did not run the turn. */
+  readonly recall?: readonly { readonly path: string; readonly title: string }[];
+}
+
+/** Recall of the turns this process answered, by ledger line id: path and title only, newest {@link RECALLED_MAX}. */
+const recalled = new Map<string, readonly { readonly path: string; readonly title: string }[]>();
+const RECALLED_MAX = 200;
 
 /**
  * What recall attached to a turn, as `turn --json` reports it — so the app can show an answer's sources.
@@ -417,6 +458,8 @@ export function handler(deps: WebDeps, token: string, hosts: readonly string[], 
       return json({ link, code: qrPath(modules) });
     }
     if (req.method === "GET" && url.pathname === "/api/state") return json(await deps.state());
+    // S22.9: the fleet page's data. Metadata only; `enabled: false` when the page was not started with --fleet.
+    if (req.method === "GET" && url.pathname === "/api/fleet") return json(deps.fleet === undefined ? { enabled: false } : { enabled: true, ...(await deps.fleet.view()) });
     if (req.method === "GET" && url.pathname === "/api/settings") return json(await deps.settings());
     if (req.method === "GET" && url.pathname === "/api/models") return json(await deps.models());
     if (req.method === "GET" && url.pathname === "/api/agent") return json(await deps.agent());
@@ -433,7 +476,9 @@ export function handler(deps: WebDeps, token: string, hosts: readonly string[], 
     if (req.method === "GET" && url.pathname === "/api/turn-detail") {
       const tid = url.searchParams.get("id") ?? "";
       const found = ID.test(tid) ? await deps.turnDetail(tid) : undefined;
-      return found === undefined ? json({ error: "no such turn" }, 404) : json(found);
+      if (found === undefined) return json({ error: "no such turn" }, 404);
+      const recall = recalled.get(tid);
+      return json(recall === undefined ? found : { ...found, recall });
     }
     if (req.method === "GET" && url.pathname === "/api/memories") return json(await deps.memories());
     if (req.method === "GET" && url.pathname === "/api/memories/graph") return json(await deps.memoryGraph());
@@ -579,8 +624,17 @@ export function handler(deps: WebDeps, token: string, hosts: readonly string[], 
       const fromStderr = said(out.stderr);
       const told = Array.isArray(answer["notes"]) ? answer["notes"].filter((n): n is string => typeof n === "string") : [];
       const notes = [...told.filter((n) => !fromStderr.includes(n)), fromStderr].filter((n) => n !== "").join("\n");
+      // D-194: the ledger line that holds this answer — the id `recent` and `/api/turn-detail` use. Null from a child
+      // that names none or a turn nothing was recorded for.
+      const entry = typeof answer["entry"] === "string" && ID.test(answer["entry"]) ? answer["entry"] : null;
+      const recall = recallOf(answer["recall"]);
+      if (entry !== null) {
+        recalled.set(entry, (recall?.attached ?? []).map((a) => ({ path: a.path, title: a.heading })));
+        if (recalled.size > RECALLED_MAX) recalled.delete(recalled.keys().next().value!);
+      }
       return json({
         ok: out.code === 0,
+        id: entry,
         // D-144: a turn under an approval that failed with nothing to show says why, as the error — its last line
         // is what became of the approval, and a page or an app that showed "(no answer)" would lose it.
         ...(out.code !== 0 && proposal !== undefined && text === "" ? { error: notes || `it did not answer (exit ${out.code})` } : {}),
@@ -595,7 +649,7 @@ export function handler(deps: WebDeps, token: string, hosts: readonly string[], 
         heldMessages: typeof answer["heldMessages"] === "number" ? answer["heldMessages"] : 0,
         changed: answer["changed"] ?? null,
         proposals: answer["proposals"] ?? [],
-        recall: recallOf(answer["recall"]),
+        recall,
         notes,
       });
     }
@@ -818,6 +872,23 @@ export function handler(deps: WebDeps, token: string, hosts: readonly string[], 
       if (typeof rid !== "string" || !/^[0-9a-f]{8}$/.test(rid)) return json({ error: "no such record" }, 400);
       const out = await deps.run(["basis", "revoke", rid, "--subject", deps.subject]);
       return json({ ok: out.code === 0, message: said(out.stdout) || said(out.stderr) });
+    }
+    if (url.pathname === "/api/fleet" || url.pathname.startsWith("/api/fleet/")) {
+      if (deps.fleet === undefined) return json({ error: "this page was not started with --fleet" }, 404);
+      // Only POSTs reach here (the GET is served with the other GETs above), and `body` was read once, higher up.
+      if (url.pathname === "/api/fleet/backend" || url.pathname === "/api/fleet/stop") {
+        if (url.pathname === "/api/fleet/stop") {
+          if (typeof body["bot"] !== "string") return json({ ok: false, error: "name the bot" }, 400);
+          const stopped = await deps.fleet.stop(body["bot"]);
+          return json(stopped.ok ? { ok: true, message: stopped.message, tasks: stopped.tasks ?? [] } : { ok: false, error: stopped.reason }, stopped.ok ? 200 : 400);
+        }
+        if (typeof body["id"] !== "string" || (body["action"] !== "rest" && body["action"] !== "wake")) {
+          return json({ ok: false, error: "name the backend and say rest or wake" }, 400);
+        }
+        const done = body["action"] === "rest" ? await deps.fleet.rest(body["id"], body["minutes"]) : await deps.fleet.wake(body["id"]);
+        return json(done.ok ? { ok: true, message: done.message } : { ok: false, error: done.reason }, done.ok ? 200 : 400);
+      }
+      return json({ error: "not found" }, 404);
     }
     if (url.pathname === "/api/update-check") {
       const out = await deps.run(["update", "--check"]);

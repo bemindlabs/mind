@@ -3,6 +3,7 @@
  * --json`, `/api/tasks` and the tasks in `/api/state`, so every channel says the same thing (D-086, D-154).
  */
 
+import { handoffLines, type Handoff } from "./gate.ts";
 import { resumable, shownStatus, type ShownStatus, type TaskRecord, type TaskStep } from "./store.ts";
 
 export interface TaskSummary {
@@ -20,9 +21,11 @@ export interface TaskSummary {
   readonly plan: readonly string[] | null;
   readonly steps: readonly TaskStep[];
   readonly result: string | null;
+  /** S22.12 AC2: present when a coding task's gate was green: what to merge, and that Mind did not. */
+  readonly handoff?: Handoff;
   /** Whether the page may offer "Resume": the task was interrupted, or parked (S18.2). */
   readonly resumable: boolean;
-  /** Whether "Stop" means anything: the task has not ended. */
+  /** Whether "Stop" means anything: the task has not ended (including while queued). */
   readonly stoppable: boolean;
   readonly browser: { readonly port: number } | null;
 }
@@ -44,6 +47,7 @@ export function summarise(record: TaskRecord, stat?: (pid: number) => { readonly
     plan: record.plan,
     steps: record.steps,
     result: record.result,
+    ...(record.handoff === undefined ? {} : { handoff: record.handoff }),
     resumable: resumable(status),
     stoppable: status !== "done" && status !== "failed" && status !== "stopped" && status !== "budget",
     browser: record.browser === null ? null : { port: record.browser.port },
@@ -79,8 +83,10 @@ export function showLines(summary: TaskSummary): string[] {
     if (step.summary !== "") lines.push(`      ${step.summary}`);
   }
   if (summary.result !== null) lines.push(`  result: ${summary.result}`);
+  if (summary.handoff !== undefined) lines.push(...handoffLines(summary.handoff));
   if (summary.status === "interrupted") lines.push("  it was interrupted: `mind task resume` carries on from the step it was on");
   if (summary.status === "parked") lines.push("  it was parked: `mind task resume` carries it on, `mind task stop` ends it");
+  if (summary.status === "queued") lines.push("  it is queued: no runner has started it");
   if (summary.status === "waiting-backend") lines.push("  its runner is waiting for the backend; it carries on by itself when the backend is back");
   return lines;
 }

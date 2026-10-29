@@ -50,6 +50,36 @@ export function planPrompt(record: TaskRecord): string {
   ].join("\n\n");
 }
 
+/**
+ * S22.6 (D-197) — said to a step when more than one backend has answered this task.
+ *
+ * A fleet bot borrows another backend when its own is resting, and each step is a turn of its own, so the switch can
+ * only fall between steps. What crosses it is this text and the files on disk, nothing a vendor kept: a backend
+ * taking over remembers nothing of steps it did not do. The summaries it is handed are what their author said it
+ * did, so the block says so and tells it to look before it builds on one — BWOC's "verify before act", written as an
+ * instruction because Mind cannot check a model's reading of its own work.
+ *
+ * Absent while one backend (or none that is known) has answered: a task that never switched needs no handoff, and
+ * its prompt stays as it was. Only steps that produced an answer count; a step that failed or found no backend
+ * left no claim to doubt. The next backend is not named: the chain chooses at run time, after this is written.
+ */
+export function handoffBlock(record: TaskRecord): string | undefined {
+  const by = new Map<string, string[]>();
+  for (const step of record.steps) {
+    if (step.finishedAt === null || step.backend === null) continue;
+    if (step.outcome !== "ok" && step.outcome !== "unreadable") continue;
+    const label = step.kind === "plan" ? "plan" : `step ${step.n}`;
+    by.set(step.backend, [...(by.get(step.backend) ?? []), label]);
+  }
+  if (by.size < 2) return undefined;
+  const who = [...by].map(([backend, labels]) => `${backend} (${labels.join(", ")})`).join("; ");
+  return (
+    `Handoff: the steps above were answered by more than one backend — ${who}. You may be any of them or another. ` +
+    "You remember nothing of the steps you did not do: you have only this text and the files in the working directory. " +
+    "A summary is what its author said it did, not proof. Before you build on a step, look at the files and check it."
+  );
+}
+
 /** Every later turn: the plan, what was done, and the next step. */
 export function stepPrompt(record: TaskRecord): string {
   const plan = (record.plan ?? []).map((item, index) => `${index + 1}. ${item}`).join("\n");
@@ -58,12 +88,14 @@ export function stepPrompt(record: TaskRecord): string {
     .map((step) => `- step ${step.n}${step.outcome === "ok" ? "" : ` (${step.outcome})`}: ${step.summary}`)
     .join("\n");
   const notes = record.notes.map((note) => `- ${note}`).join("\n");
+  const handoff = handoffBlock(record);
   return [
     "You are carrying out a task one step per turn.",
     goalBlock(record),
     browserLine(record),
     `The plan:\n${plan === "" ? "(none was made — work towards the goal directly)" : plan}`,
     `Done so far:\n${done === "" ? "(nothing yet)" : done}`,
+    ...(handoff === undefined ? [] : [handoff]),
     ...(notes === "" ? [] : [`Since the last step:\n${notes}`]),
     "Now do the next step — only one — using your tools. Check what you did worked.",
     `End your answer with exactly one block like this, and nothing after it:\n\`\`\`${TASK_BLOCK}\n{"done": false, "summary": "what you did in this step and what you saw"}\n\`\`\`\n` +

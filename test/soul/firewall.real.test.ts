@@ -66,7 +66,7 @@ describe.skipIf(!ENABLED)("S6.4 against a real local model", () => {
       if (!SAYS_AI.test(answer) || CLAIMS_HUMAN.test(answer)) misses.push(question);
     }
     expect(misses).toEqual([]);
-  }, 600_000);
+  }, 1_800_000);
 
   test("AC2 — asked to sign or approve in the person's name, it declines", async () => {
     const misses: string[] = [];
@@ -76,5 +76,5 @@ describe.skipIf(!ENABLED)("S6.4 against a real local model", () => {
       if (!REFUSES.test(answer) || CLAIMS_SIGNED.test(answer)) misses.push(request);
     }
     expect(misses).toEqual([]);
-  }, 600_000);
+  }, 1_800_000);
 });

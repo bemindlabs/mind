@@ -322,6 +322,7 @@ main:focus{outline:none}
       <button role="tab" id="tabProfile" tabindex="-1" aria-selected="false" aria-controls="profile"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c1.2-3.6 4-5.5 7-5.5s5.8 1.9 7 5.5"/></svg><span>Profile</span></button>
       <button role="tab" id="tabMemories" tabindex="-1" aria-selected="false" aria-controls="memories"><svg viewBox="0 0 24 24"><path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 1V4.5A2.5 2.5 0 0 0 9 4Z"/><path d="M15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 1"/></svg><span>Memories</span></button>
       <button role="tab" id="tabTasks" tabindex="-1" aria-selected="false" aria-controls="tasks"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3.5 6 1.5 1.5L7.5 5M3.5 12l1.5 1.5 2.5-2.5M3.5 18l1.5 1.5 2.5-2.5"/></svg><span>Tasks</span></button>
+      <button role="tab" id="tabFleet" tabindex="-1" aria-selected="false" aria-controls="fleet"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="6" rx="1.5"/><path d="M14 17h7"/></svg><span>Fleet</span></button>
       <button role="tab" id="tabPrivacy" tabindex="-1" aria-selected="false" aria-controls="privacy"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg><span>Privacy</span></button>
       <button role="tab" id="tabSettings" tabindex="-1" aria-selected="false" aria-controls="settings"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span>Settings</span></button>
     </nav>
@@ -544,6 +545,23 @@ main:focus{outline:none}
     <section id="taskDetail" aria-label="The task you opened" hidden></section>
   </div>
 
+  <div class="set" id="fleet" role="tabpanel" aria-labelledby="tabFleet" hidden>
+    <section aria-labelledby="h-fleetbots">
+      <h2 id="h-fleetbots">Bots</h2>
+      <p class="hint">One card per bot of the roster this page was started with. Only counts, states and prices are shown: no prompt, no answer and no goal, and nothing on this tab starts a turn or sends anything to a vendor.</p>
+      <div id="fleetBots" aria-live="polite"></div>
+    </section>
+    <section aria-labelledby="h-fleetback">
+      <h2 id="h-fleetback">Backends</h2>
+      <p class="hint">Whether each can answer now, and whether it is resting. A rest by hand lasts at most a day; Wake calls a backend back at once and forgets what it had earned.</p>
+      <div id="fleetBackends" aria-live="polite"></div>
+    </section>
+    <section aria-labelledby="h-fleetdisp">
+      <h2 id="h-fleetdisp">Measured so far</h2>
+      <p class="hint">What finished tasks say, per backend, model and kind of work, always with how many tasks it rests on (n). A rate from a few tasks is a hint, not a result, and it is a direction, not a score of skill. Only counts, never words.</p>
+      <div id="fleetDispatch"></div>
+    </section>
+  </div>
   <div class="set" id="privacy" role="tabpanel" aria-labelledby="tabPrivacy" hidden>
     <section aria-labelledby="h-capture">
       <h2 id="h-capture">Learning what you do <span class="pill" id="capPill">…</span></h2>
@@ -819,6 +837,14 @@ const CHANGE_LIMITS = ${JSON.stringify([...REPORT_LIMITS])};
         if (t.content !== "full") { d.append(el("div", "small", "Only its size was kept for this one — the words were not recorded.")); return; }
         const q = el("div", "notes"); q.textContent = t.asked || ""; d.append(el("div", "small", "Asked"), q);
         const a = el("div", "notes"); a.style.whiteSpace = "normal"; a.append(t.answer ? md(t.answer) : document.createTextNode("(no answer)")); const said = modelLabel(t.model || "", t.modelRequested || ""); d.append(el("div", "small", "Answered by " + t.backend + (said ? " · " + said : "") + " · " + t.when), a);
+        // D-194: what the turn did — plain text through textContent, each line only when the engine knew it.
+        const facts = [];
+        if (t.route) facts.push(t.route);
+        if (t.usage) facts.push("Tokens: " + ["input", "output", "cached", "total"].filter((k) => typeof t.usage[k] === "number").map((k) => k + " " + t.usage[k]).join(" · "));
+        if (typeof t.durationMs === "number") facts.push("Took " + (t.durationMs / 1000).toFixed(1) + " s");
+        if (typeof t.costUsdMicros === "number") facts.push("Cost US$" + (t.costUsdMicros / 1e6).toFixed(6) + " (the ledger's price table)");
+        for (const f of facts) d.append(el("div", "small", f));
+        if (Array.isArray(t.recall)) { d.append(el("div", "small", t.recall.length ? "Memory it read:" : "It read no memory.")); for (const m of t.recall) d.append(el("div", "small", m.path + (m.title ? " — " + m.title : ""))); }
         const again = el("button", "", "Ask again"); again.onclick = () => { $("prompt").value = t.asked || ""; showTab("home"); $("prompt").focus(); };
         const row = el("div", "row"); row.append(again); d.append(row);
       };
@@ -1212,7 +1238,7 @@ const CHANGE_LIMITS = ${JSON.stringify([...REPORT_LIMITS])};
   // D-153: the browser's own words. 3 (any site) is typed in a terminal, like every 3.
   const OP_LEVELS = ["No browser", "Looks and suggests", "Allowed sites only"];
   const wordsFor = (key) => key === "operate" ? OP_LEVELS : LEVELS;
-  const TABS = ["home", "agent", "profile", "memories", "tasks", "privacy", "settings"];
+  const TABS = ["home", "agent", "profile", "memories", "tasks", "fleet", "privacy", "settings"];
   function showTab(which) {
     if (!TABS.includes(which)) which = "home";
     for (const t of TABS) {
@@ -1229,6 +1255,7 @@ const CHANGE_LIMITS = ${JSON.stringify([...REPORT_LIMITS])};
     if (which === "profile") { loadProfile(); loadDrafts(); }
     if (which === "privacy") loadPrivacy();
     if (which === "tasks") loadTasks();
+    if (which === "fleet") loadFleet();
   }
   for (const t of TABS) $("tab" + t[0].toUpperCase() + t.slice(1)).onclick = () => showTab(t);
   // Tabs (spec §5): one stop in the tab order, the arrows (and Home, End) move between them and select as they go.
@@ -2100,6 +2127,62 @@ const CHANGE_LIMITS = ${JSON.stringify([...REPORT_LIMITS])};
   let taskOpen = null;
   const TASK_WORDS = { planning: "Planning", running: "Working on it", waiting: "Waiting for you", "waiting-backend": "Waiting for its backend", parked: "Parked", done: "Done", failed: "Failed", stopped: "Stopped", budget: "Out of budget", interrupted: "Interrupted" };
   const taskWord = (t) => (TASK_WORDS[t.status] || t.status) + " · " + t.used.turns + "/" + t.budget.turns + " turns";
+  // S22.9: the fleet tab. It exists only when the page was started with --fleet; otherwise it is removed at start.
+  const usd = (micros) => "$" + (micros / 1e6).toFixed(micros >= 1e6 ? 2 : 4);
+  const clock = (iso) => new Date(iso).toLocaleString([], { hour: "2-digit", minute: "2-digit", month: "short", day: "numeric" });
+  const FLEET_WORD = { idle: "Idle", working: "Working", resting: "Resting", parked: "Parked" };
+  async function fleetAct(path, body, done) {
+    let r; try { r = await api(path, body); } catch { toast("That did not go through."); return; }
+    toast(r.ok ? (r.message || done) : (r.error || "That did not work."));
+    loadFleet();
+  }
+  async function loadFleet() {
+    let r; try { r = await api("/api/fleet"); } catch { return; }
+    const bots = $("fleetBots"), backs = $("fleetBackends"); bots.replaceChildren(); backs.replaceChildren();
+    if (!r.enabled) { bots.append(el("p", "empty", "This page was not started with --fleet.")); return; }
+    if (!r.bots.length) bots.append(el("p", "empty", "The roster has no bots."));
+    for (const b of r.bots) {
+      const c = el("div", "card");
+      c.append(el("p", "what", b.id + " — " + (FLEET_WORD[b.status] || b.status)));
+      c.append(el("p", "meta", "Home " + b.home + (b.spares.length ? ", then " + b.spares.join(", ") : ", no spare") + " · scope " + b.scope + (b.using ? " · last answered by " + b.using : "")));
+      if (b.task) c.append(el("p", "meta", "Task " + b.task.id + " — " + b.task.status + ", " + b.task.steps + " step(s)")); else c.append(el("p", "meta", "No task."));
+      for (const h of b.handoffs) {
+        c.append(el("p", "what", "Handoff " + h.id + " — " + h.branch + " into " + h.base));
+        c.append(el("p", "meta", h.changedFiles + " tracked file(s) changed"));
+        if (h.diffStat) c.append(el("pre", "meta", h.diffStat));
+        c.append(el("pre", "meta", h.mergeCommand));
+      }
+      if (b.homeRest) c.append(el("p", "meta", "Its home backend rests until " + clock(b.homeRest.until) + " (" + b.homeRest.reason + ")."));
+      const s = b.spent;
+      c.append(el("p", "meta", s.turns + " turn(s), " + s.cloudTurns + " to a vendor · " + usd(s.costUsdMicros) + (s.unpriced ? " + " + s.unpriced + " not priced" : "") + (s.lastAt ? " · last " + clock(s.lastAt) : "")));
+      const stop = el("button", "", "Stop its tasks"); stop.disabled = !b.canStop; stop.title = b.canStop ? "" : "The roster gives this bot no dir.";
+      stop.onclick = () => { stop.disabled = true; fleetAct("/api/fleet/stop", { bot: b.id }, "Asked its tasks to stop."); };
+      c.append(stop); bots.append(c);
+    }
+    const disp = $("fleetDispatch"); disp.replaceChildren();
+    if (!(r.dispatch || []).length) disp.append(el("p", "empty", "No task has finished with a measure line yet."));
+    for (const d of r.dispatch || []) {
+      const c = el("div", "card");
+      c.append(el("p", "what", d.backend + " · " + (d.model || "no model named") + " · " + (d.kind || "no kind")));
+      c.append(el("p", "meta", "n=" + d.n + " · " + (d.doneRate === null ? "no outcome yet" : Math.round(d.doneRate * 100) + "% of " + d.n + " done") + (d.n < 5 ? " (too few to rank by)" : "") + (d.stopped ? " · " + d.stopped + " stopped, not counted" : "")));
+      disp.append(c);
+    }
+    for (const k of r.backends) {
+      const c = el("div", "card");
+      c.append(el("p", "what", k.id + " — " + (k.reach === "ok" ? "can answer" : k.reach === "no" ? "cannot answer" : "not checked")));
+      c.append(el("p", "meta", (k.reachReason ? k.reachReason + " · " : "") + "Used by " + (k.bots.join(", ") || "no bot")));
+      c.append(el("p", "meta", k.rest ? "Resting until " + clock(k.rest.until) + " — " + k.rest.reason + (k.rest.kind === "auth" ? " (log in again; waiting does not fix it)" : "") : "Not resting."));
+      const row = el("div", "row");
+      for (const [label, minutes] of [["Rest 1 h", 60], ["Rest 5 h", 300]]) { const x = el("button", "", label); x.onclick = () => fleetAct("/api/fleet/backend", { id: k.id, action: "rest", minutes }, k.id + " rests."); row.append(x); }
+      const wake = el("button", "", "Wake"); wake.disabled = !k.rest; wake.onclick = () => fleetAct("/api/fleet/backend", { id: k.id, action: "wake" }, k.id + " is called back.");
+      row.append(wake); c.append(row); backs.append(c);
+    }
+  }
+  api("/api/fleet").then((r) => {
+    if (r && r.enabled) return;
+    const at = TABS.indexOf("fleet"); if (at >= 0) TABS.splice(at, 1);
+    $("tabFleet").remove(); $("fleet").remove();
+  }).catch(() => undefined);
   async function loadTasks() {
     let r; try { r = await api("/api/tasks"); } catch { return; }
     const box = $("taskList"); box.replaceChildren();

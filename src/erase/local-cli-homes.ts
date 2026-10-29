@@ -40,3 +40,18 @@ export interface HomeRoots {
 export function localCliHomeDir(roots: HomeRoots, id: LocalCliHomeId): string {
   return join(stateRoot(roots.home, roots.env), "vendors", id);
 }
+
+/**
+ * D-192: the cloud vendors whose fenced turns run in a home of Mind's own **per subject**
+ * (`<state root>/vendors/<vendor>/subjects/<subject>`). Unlike a local backend's home it is one subject's alone, so
+ * erase removes it without a question. Equal to the vendors with a `cloudHome` in `src/exec/registry.ts`; a test
+ * says so, and another asks the real `CliExec` where it put one.
+ */
+export const CLOUD_HOMES = ["claude", "codex", "grok"] as const;
+
+export type CloudHomeId = (typeof CLOUD_HOMES)[number];
+
+/** `<state root>/vendors/<vendor>/subjects/<subject>` — the `HOME` of a fenced cloud turn for that subject. */
+export function cloudHomeDir(roots: HomeRoots, id: CloudHomeId, subject: string): string {
+  return join(stateRoot(roots.home, roots.env), "vendors", id, "subjects", subject);
+}

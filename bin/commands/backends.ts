@@ -11,6 +11,8 @@ import {
   vendor,
 } from "../../src/exec/index.ts";
 import { isLocalCliId, localBaseVendor } from "../../src/exec/local-cli.ts";
+import { cloudFenceLimits, cloudFenceSummary } from "../../src/exec/cloud-fence.ts";
+import { fenceSupport } from "../../src/exec/fence.ts";
 import { bold, dim } from "../shared.ts";
 
 const MARK: Record<string, string> = { ok: "OK", no: "--" };
@@ -70,6 +72,14 @@ export async function cmdBackends(): Promise<number> {
   console.log();
   console.log(dim("What the read-only flags do not cover:"));
   for (const note of readonlyLimits()) console.log(dim(`  - ${note}`));
+
+  // D-192: which cloud turns the kernel fence holds on this machine, asked of the registry and the kernel — the
+  // same two facts a turn asks — so this cannot say a vendor is fenced that a turn would run bare.
+  const support = fenceSupport();
+  console.log();
+  console.log(dim("The kernel fence around cloud turns (D-192):"));
+  for (const spec of VENDORS) console.log(dim(`  ${spec.id.padEnd(8)} ${cloudFenceSummary(spec, support)}`));
+  for (const note of cloudFenceLimits(VENDORS, support)) console.log(dim(`  - ${note}`));
 
   // The table above is a list of places a prompt can be sent, so this is where
   // the limits of the one-line notice `turn` prints before each send belong.

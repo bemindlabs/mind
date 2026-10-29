@@ -153,6 +153,11 @@ export async function unitWorkdirHints(
 export function workdirRefusal(
   cwd: string,
   places: readonly ProtectedPlace[],
+  /**
+   * S22.8: `false` leaves the "contains" half unasked. Under `scope = machine` the kernel holds the red lines, so a
+   * working directory such as `/` that holds them is allowed; one that lies inside one is still refused.
+   */
+  containing: boolean = true,
 ): string | undefined {
   const here = realish(cwd);
   for (const place of places) {
@@ -160,7 +165,7 @@ export function workdirRefusal(
     if (isInside(here, there)) {
       return refusal(cwd, here, `lies inside ${place.label} (${there})`);
     }
-    if (isInside(there, here)) {
+    if (containing && isInside(there, here)) {
       return refusal(cwd, here, `contains ${place.label} (${there})`);
     }
   }

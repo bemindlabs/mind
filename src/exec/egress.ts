@@ -64,6 +64,7 @@ import type {
   TurnResult,
 } from "./backend.ts";
 import { FallbackExec } from "./fallback.ts";
+import type { Health } from "./health.ts";
 import { notLocal } from "./local.ts";
 import { OllamaExec } from "./ollama-exec.ts";
 
@@ -266,8 +267,8 @@ export class AnnouncedExec implements ExecBackend {
  * unsanctioned door shut too: `new FallbackExec(` appears in no file under
  * `src/` or `bin/` but this one.
  */
-export function turnChain(members: readonly AnnouncedExec[]): FallbackExec {
-  return new FallbackExec(members);
+export function turnChain(members: readonly AnnouncedExec[], health?: Health): FallbackExec {
+  return new FallbackExec(members, undefined, health);
 }
 
 /**

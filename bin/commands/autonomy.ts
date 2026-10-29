@@ -58,6 +58,8 @@ import {
   type DialVerdict,
 } from "../dial.ts";
 import { ERR, OUT, parseArgs, readPhrase, usageError, type Sink } from "../shared.ts";
+import { cloudFenceLimits, cloudFenceSummary } from "../../src/exec/cloud-fence.ts";
+import { fenceSupport, type FenceSupport } from "../../src/exec/fence.ts";
 
 const AUTONOMY_USAGE =
   "usage: mind autonomy show [<dir> --subject <id>]\n" +
@@ -80,6 +82,7 @@ export function sayDial(
   verdict: DialVerdict,
   vendors: readonly VendorSpec[] = VENDORS,
   language: Language = chosenLanguage(process.env),
+  fence: () => FenceSupport = fenceSupport,
 ): void {
   const { effective } = verdict;
 
@@ -139,8 +142,20 @@ export function sayDial(
 
   out.line("");
   out.line(out.bold("Per backend, because the dial is only as real as the vendor's flag:"));
-  for (const spec of vendors) out.line(`  ${spec.id.padEnd(8)} writes? ${readOnlySummary(spec)}`);
+  // At 2 and above no flag is sent, so the flag's record answers a question this turn does not ask.
+  // Saying "writes? no" there read as a restraint that is not in force; say what is, and keep the record beside it.
+  for (const spec of vendors) {
+    out.line(
+      effective.act >= 2
+        ? `  ${spec.id.padEnd(8)} writes? yes — no read-only flag is sent at level ${effective.act} (at level 1: ${readOnlySummary(spec)})`
+        : `  ${spec.id.padEnd(8)} writes? ${readOnlySummary(spec)}`,
+    );
+  }
+  // D-192: whether the kernel holds each vendor's turns, beside what its flag does.
+  const support = fence();
+  for (const spec of vendors) out.line(out.dim(`  ${spec.id.padEnd(8)} kernel fence: ${cloudFenceSummary(spec, support)}`));
   for (const line of readonlyLimits(vendors)) out.line(out.dim(`  - ${line}`));
+  for (const line of cloudFenceLimits(vendors, support)) out.line(out.dim(`  - ${line}`));
 
   const open = vendorsWithNoMechanism(vendors);
   if (open.length > 0) {

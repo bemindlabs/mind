@@ -87,6 +87,8 @@ export interface RecordingOptions {
   readonly prices: PricesInForce;
   /** sha256 of the rendered soul this turn wore. */
   readonly soulSha: string | null;
+  /** S22.8: `machine` when this turn may work anywhere on the machine but the red lines; the line then says so. */
+  readonly scope?: "machine";
   /**
    * Where a failed write goes.
    *
@@ -181,6 +183,7 @@ export class RecordingExec implements ExecBackend {
       usage,
       identity: result.identityStrength,
       soul_sha: this.options.soulSha,
+      ...(this.options.scope === "machine" ? { scope: "machine" as const } : {}),
     };
   }
 }

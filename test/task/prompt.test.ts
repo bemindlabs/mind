@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { activeLimitMs, budgetSpent, stepTimeoutMs, wholeNumber } from "../../src/task/budget.ts";
 import { browserTaskProblem, browserToolTimeoutMs } from "../../src/task/policy.ts";
-import { lastBlock, planPrompt, readPlan, readStep, stepPrompt, TASK_BLOCK } from "../../src/task/prompt.ts";
+import { handoffBlock, lastBlock, planPrompt, readPlan, readStep, stepPrompt, TASK_BLOCK } from "../../src/task/prompt.ts";
 import { aTask, said } from "./fixture.ts";
 
 describe("what a task's turns are asked (D-154)", () => {
@@ -13,6 +13,53 @@ describe("what a task's turns are asked (D-154)", () => {
     expect(text).toContain("```mind-task");
     expect(planPrompt(aTask({ operate: 1, allow: ["http://a:1"] }))).toContain("cannot click or type");
     expect(planPrompt(aTask({ operate: 2, allow: [] }))).toContain("on: no site");
+  });
+
+  describe("a handoff between backends (S22.6)", () => {
+    const base = { kind: "step" as const, startedAt: "a", finishedAt: "b", turnId: "t", exit: 0, outcome: "ok" as const, summary: "did it", done: false, tokens: 1, ms: 1, waitedMs: 0 };
+
+    test("is said once two backends have answered, naming who did which step", () => {
+      const record = aTask({
+        plan: ["a"],
+        steps: [
+          { ...base, n: 1, kind: "plan", backend: "claude" },
+          { ...base, n: 2, backend: "claude" },
+          { ...base, n: 3, backend: "codex" },
+        ],
+      });
+      const text = stepPrompt(record);
+      expect(text).toContain("answered by more than one backend — claude (plan, step 2); codex (step 3)");
+      expect(text).toContain("A summary is what its author said it did, not proof");
+      expect(text).toContain("look at the files and check it");
+      // After what was done, before the instruction to act.
+      expect(text.indexOf("Done so far")).toBeLessThan(text.indexOf("Handoff:"));
+      expect(text.indexOf("Handoff:")).toBeLessThan(text.indexOf("Now do the next step"));
+    });
+
+    test("is absent while one backend, or none that is known, has answered", () => {
+      const one = aTask({ steps: [{ ...base, n: 1, backend: "claude" }, { ...base, n: 2, backend: "claude" }] });
+      expect(handoffBlock(one)).toBeUndefined();
+      expect(stepPrompt(one)).not.toContain("Handoff");
+      expect(handoffBlock(aTask({ steps: [{ ...base, n: 1, backend: null }, { ...base, n: 2, backend: "codex" }] }))).toBeUndefined();
+      expect(handoffBlock(aTask())).toBeUndefined();
+    });
+
+    test("counts only steps that answered: a failed step or a missing backend left no claim to doubt", () => {
+      const record = aTask({
+        steps: [
+          { ...base, n: 1, backend: "claude" },
+          { ...base, n: 2, backend: "codex", outcome: "failed" },
+          { ...base, n: 3, backend: "grok", outcome: "no-backend" },
+          { ...base, n: 4, backend: "gemini", finishedAt: null },
+        ],
+      });
+      expect(handoffBlock(record)).toBeUndefined();
+    });
+
+    test("an unreadable answer still counts: it was said, and its summary is a guess", () => {
+      const record = aTask({ steps: [{ ...base, n: 1, backend: "claude" }, { ...base, n: 2, backend: "codex", outcome: "unreadable" }] });
+      expect(handoffBlock(record)).toContain("codex (step 2)");
+    });
   });
 
   test("a step's turn gets the plan, what was done, the notes, and the next step only", () => {

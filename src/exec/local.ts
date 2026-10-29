@@ -174,9 +174,11 @@ export const LOCAL_LIMITS: readonly string[] = [
   "the flag stops at the door. Once `unwrapPersonal` has produced a string, it is a string: no " +
     "JavaScript type system follows it into a log line, a template or a JSON.stringify.",
   "a process running as this user can read the files directly. A vendor CLI Mind spawns for an ordinary " +
-    "(cloud) turn has its own tools and the same uid: mode 0600 is not a boundary against it, and a read-only " +
-    "turn on a vendor that keeps its read tools can open any file you can and send it to that vendor — the I-6 " +
-    "screen sees only the prompt Mind sends, never what such a tool reads. A local CLI (claude-local, " +
+    "(cloud) turn has its own tools and the same uid: mode 0600 is not a boundary against it. Mind fences the " +
+    "cloud vendors whose home it has measured (D-192; `mind backends` says which, and whether this kernel can); " +
+    "on any other, or where the kernel has no Landlock, a read-only turn on a vendor that keeps its read tools " +
+    "can open any file you can and send it to that vendor — the I-6 screen sees only the prompt Mind sends, " +
+    "never what such a tool reads. A local CLI (claude-local, " +
     "grok-local) is fenced for reads as well as writes: the kernel refuses every read outside the system " +
     "directories, what the turn may write, its working directory, the vendor program and the engine's own " +
     "executable, so your home, ~/.secrets, ~/.ssh and other subjects' data are refused to it, and so is the " +
